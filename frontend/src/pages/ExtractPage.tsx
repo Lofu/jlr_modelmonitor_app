@@ -59,6 +59,22 @@ const ExtractPage = () => {
   const wsRef = useRef<WebSocket | null>(null)
   const startTimeRef = useRef<number>(0)
 
+  // 計時器邏輯：當 loading 狀態為 true 時，每秒更新 elapsed time
+  useEffect(() => {
+    let timer: NodeJS.Timeout
+    if (loading) {
+      timer = setInterval(() => {
+        setTimeStats(prev => ({
+          ...prev,
+          elapsed: (Date.now() - startTimeRef.current) / 1000
+        }))
+      }, 1000)
+    }
+    return () => {
+      if (timer) clearInterval(timer)
+    }
+  }, [loading])
+
   useEffect(() => {
     // 載入系統配置和 PDF 檔案列表
     loadConfig()

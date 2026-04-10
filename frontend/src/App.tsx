@@ -199,12 +199,16 @@ function App() {
                 background: 'transparent',
               }}
             >
-              <Routes>
-                <Route path="/" element={<ExtractPage />} />
-                <Route path="/extract" element={<ExtractPage />} />
-                <Route path="/analyze" element={<AnalyzePage />} />
-                <Route path="/files" element={<FilesPage />} />
-              </Routes>
+              {/* 使用 display 控制顯示，避免 component unmount 導致丟失 WebSocket 連線與萃取進度 */}
+              <div style={{ display: (location.pathname === '/' || location.pathname === '/extract') ? 'block' : 'none' }}>
+                <ExtractPage />
+              </div>
+              <div style={{ display: location.pathname === '/analyze' ? 'block' : 'none' }}>
+                <AnalyzePage />
+              </div>
+              <div style={{ display: location.pathname === '/files' ? 'block' : 'none' }}>
+                <FilesPage />
+              </div>
             </div>
           </Content>
         </Layout>

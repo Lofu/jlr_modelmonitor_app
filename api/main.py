@@ -10,6 +10,7 @@ from typing import List, Dict, Any, Optional
 from pathlib import Path
 import json
 import asyncio
+import threading
 import pandas as pd
 from datetime import datetime
 import logging
@@ -33,7 +34,15 @@ logger = logging.getLogger("api")
 
 logger.info("=" * 60)
 logger.info("後端啟動中...")
-logger.info(f"GOOGLE_APPLICATION_CREDENTIALS = {os.environ.get('GOOGLE_APPLICATION_CREDENTIALS', '(未設定，使用 ADC)')}")
+
+# 強制清除可能引發錯誤的殘留環境變數
+if 'GOOGLE_APPLICATION_CREDENTIALS' in os.environ:
+    old_cred = os.environ['GOOGLE_APPLICATION_CREDENTIALS']
+    logger.warning(f"偵測到殘留的憑證變數: {old_cred}，將強制清除並使用 ADC！")
+    del os.environ['GOOGLE_APPLICATION_CREDENTIALS']
+else:
+    logger.info("未偵測到 GOOGLE_APPLICATION_CREDENTIALS，將正常使用 ADC。")
+
 logger.info("=" * 60)
 
 # 本地模組
@@ -278,33 +287,41 @@ async def extract_pdfs(request: ExtractRequest):
         csv_path = EXTRACT_DIR / csv_filename
         jsonl_path = OUTPUT_DIR / jsonl_filename
         
-        # 錯誤和成功計數
+        # 錯誤和成功計數（使用 lock 保護，多線程安全）
         success_count = 0
         error_count = 0
-        
-        # 進度回調函數
+        count_lock = threading.Lock()
+
+        loop = asyncio.get_running_loop()
+
+        # 進度回調函數（會在多個子執行緒中並行觸發）
         def progress_callback(current, total, filename, status, error_msg=None):
             nonlocal success_count, error_count
-            
-            if status == "success":
-                success_count += 1
-            elif status == "error":
-                error_count += 1
-            
-            # 使用 asyncio 來廣播進度（在同步函數中）
-            asyncio.create_task(manager.broadcast({
-                "type": "progress",
-                "current": current,
-                "total": total,
-                "file": filename,
-                "status": status,
-                "error": error_msg
-            }))
+
+            with count_lock:
+                if status == "success":
+                    success_count += 1
+                elif status == "error":
+                    error_count += 1
+
+            # 使用 run_coroutine_threadsafe 來跨執行緒廣播進度
+            asyncio.run_coroutine_threadsafe(
+                manager.broadcast({
+                    "type": "progress",
+                    "current": current,
+                    "total": total,
+                    "file": filename,
+                    "status": status,
+                    "error": error_msg
+                }),
+                loop
+            )
         
-        # 執行批次萃取
+        # 執行批次萃取 (使用 asyncio.to_thread 避免阻塞 event loop)
         pdf_file_names = [pdf.name for pdf in pdf_files]
         
-        result_df = extractor.batch_extract(
+        result_df = await asyncio.to_thread(
+            extractor.batch_extract,
             pdf_files=pdf_file_names,
             output_jsonl=jsonl_path,
             output_csv=csv_path,

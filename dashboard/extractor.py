@@ -7,6 +7,8 @@ import json
 import re
 import time
 import traceback
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 import pandas as pd
@@ -338,24 +340,25 @@ class PDFExtractor:
         output_jsonl: Optional[Path] = None,
         output_csv: Optional[Path] = None,
         progress_callback=None,
-        max_runtime_minutes: Optional[int] = None
+        max_runtime_minutes: Optional[int] = None,
+        num_workers: int = 3
     ) -> pd.DataFrame:
         """
-        批次萃取多個 PDF（支援斷點續跑）
-        
+        批次萃取多個 PDF（支援斷點續跑、多線程並行）
+
         Args:
             pdf_files: PDF 檔案列表
             output_jsonl: 輸出 JSONL 路徑 (可選)
             output_csv: 輸出 CSV 路徑 (可選)
             progress_callback: 進度回調函數 (可選)
-            max_runtime_minutes: 最大執行時間（分鐘），用於 Cloud Run 等有時間限制的環境 (可選)
-        
+            max_runtime_minutes: 最大執行時間（分鐘）(可選)
+            num_workers: 並行線程數（預設 3）
+
         Returns:
             萃取結果 DataFrame
         """
-        # 記錄開始時間（用於時間限制）
         start_time = time.time()
-        
+
         # ========== 1. 讀取已處理的檔案（斷點續跑） ==========
         processed_files = set()
         if output_jsonl and output_jsonl.exists():
@@ -363,89 +366,107 @@ class PDFExtractor:
                 for line in f:
                     try:
                         obj = json.loads(line)
-                        # 從 DOC_ID 或 CASE_LINK 判斷已處理
                         doc_id = obj.get('DOC_ID')
                         if doc_id:
                             processed_files.add(f"{doc_id}.pdf")
                     except Exception:
                         continue
-        
-        # 過濾掉已處理的檔案
+
         files_to_process = [f for f in pdf_files if f not in processed_files]
-        
+
         if processed_files:
             print(f"📝 已有 {len(processed_files)} 個檔案已處理，將跳過")
             print(f"📝 剩餘 {len(files_to_process)} 個檔案待處理")
-        
-        # 準備目錄
+
         if output_jsonl:
             output_jsonl.parent.mkdir(parents=True, exist_ok=True)
         if output_csv:
             output_csv.parent.mkdir(parents=True, exist_ok=True)
-        
-        # ========== 2. 處理檔案（即時寫入） ==========
-        all_defendants = []
-        errors = []
-        
-        for i, pdf_file in enumerate(files_to_process):
-            # ⏰ 檢查執行時間限制
+
+        total_count = len(processed_files) + len(files_to_process)
+
+        # ========== 2. 線程安全工具 ==========
+        jsonl_lock = threading.Lock()        # 保護 JSONL 寫入
+        progress_lock = threading.Lock()     # 保護進度計數
+        stop_event = threading.Event()       # 時間限制停止信號
+        completed_count = [len(processed_files)]  # 用 list 讓 closure 可修改
+
+        # ========== 3. 單一 PDF 處理函數（在各線程中執行） ==========
+        def process_single(pdf_file: str):
+            # 已超時則跳過
+            if stop_event.is_set():
+                return pdf_file, None, None
+
+            # 檢查時間限制
             if max_runtime_minutes:
                 elapsed_minutes = (time.time() - start_time) / 60
                 if elapsed_minutes >= max_runtime_minutes:
+                    stop_event.set()
                     print(f"\n⏰ 已達執行時間上限 ({max_runtime_minutes} 分鐘)")
-                    print(f"📊 本次已處理 {i} 個檔案，剩餘 {len(files_to_process) - i} 個")
-                    print(f"💡 下次執行時會自動從第 {len(processed_files) + i + 1} 個開始")
-                    break  # 優雅地停止
-            
+                    return pdf_file, None, None
+
             try:
-                # 在每個請求之間添加短暫延遲，避免觸發速率限制
-                if i > 0:  # 第一個檔案不需要延遲
-                    time.sleep(1.5)  # 1.5 秒延遲
-                
                 defendants = self.extract_from_pdf(pdf_file, use_local=True)
-                
-                # ✅ 每處理完一個就立即寫入 JSONL（追加模式）
+
+                # 線程安全寫入 JSONL
                 if output_jsonl and defendants:
-                    with open(output_jsonl, 'a', encoding='utf-8') as f:  # 'a' = append
-                        for defendant in defendants:
-                            f.write(json.dumps(defendant, ensure_ascii=False) + '\n')
-                
-                all_defendants.extend(defendants)
-                
-                # 更新進度
+                    with jsonl_lock:
+                        with open(output_jsonl, 'a', encoding='utf-8') as f:
+                            for defendant in defendants:
+                                f.write(json.dumps(defendant, ensure_ascii=False) + '\n')
+
+                # 線程安全更新進度
+                with progress_lock:
+                    completed_count[0] += 1
+                    current = completed_count[0]
+
                 if progress_callback:
-                    # 傳遞總數（包含已處理的）
-                    total_count = len(processed_files) + len(files_to_process)
-                    current_count = len(processed_files) + i + 1
-                    progress_callback(current_count, total_count, pdf_file, "success")
-            
+                    progress_callback(current, total_count, pdf_file, "success")
+
+                return pdf_file, defendants, None
+
             except Exception as e:
-                # 捕獲完整錯誤訊息和 traceback
                 error_msg = str(e)
                 full_traceback = traceback.format_exc()
-                
                 error_obj = {
                     'pdf_file': pdf_file,
                     'error': error_msg,
                     'traceback': full_traceback,
                     'error_type': type(e).__name__
                 }
-                errors.append(error_obj)
-                
-                # ✅ 錯誤也立即寫入
+
+                # 線程安全寫入錯誤記錄
                 if output_jsonl:
                     error_file = output_jsonl.parent / f"{output_jsonl.stem}_errors.jsonl"
-                    with open(error_file, 'a', encoding='utf-8') as f:
-                        f.write(json.dumps(error_obj, ensure_ascii=False) + '\n')
-                
+                    with jsonl_lock:
+                        with open(error_file, 'a', encoding='utf-8') as f:
+                            f.write(json.dumps(error_obj, ensure_ascii=False) + '\n')
+
+                with progress_lock:
+                    completed_count[0] += 1
+                    current = completed_count[0]
+
                 if progress_callback:
-                    total_count = len(processed_files) + len(files_to_process)
-                    current_count = len(processed_files) + i + 1
-                    progress_callback(current_count, total_count, pdf_file, "error", full_traceback)
-        
-        # ========== 3. 最後生成 CSV（從 JSONL 讀取完整資料） ==========
+                    progress_callback(current, total_count, pdf_file, "error", full_traceback)
+
+                return pdf_file, None, error_obj
+
+        # ========== 4. 並行執行 ==========
+        print(f"\n{'='*60}")
+        print(f"🚀 並行萃取啟動：{num_workers} 個線程，共 {len(files_to_process)} 個檔案")
+        print(f"{'='*60}\n")
+
+        all_defendants = []
+
+        with ThreadPoolExecutor(max_workers=num_workers) as executor:
+            futures = {executor.submit(process_single, f): f for f in files_to_process}
+            for future in as_completed(futures):
+                _, defendants, _ = future.result()
+                if defendants:
+                    all_defendants.extend(defendants)
+
+        # ========== 5. 全部完成後寫出 CSV ==========
         if output_csv and output_jsonl and output_jsonl.exists():
-            # 讀取完整的 JSONL 檔案
             all_data = []
             with open(output_jsonl, 'r', encoding='utf-8') as f:
                 for line in f:
@@ -453,15 +474,13 @@ class PDFExtractor:
                         all_data.append(json.loads(line))
                     except Exception:
                         continue
-            
+
             if all_data:
                 df = pd.DataFrame(all_data)
                 df.to_csv(output_csv, index=False, encoding='utf-8')
         else:
-            # 如果沒有 JSONL，使用當前的結果
             df = pd.DataFrame(all_defendants)
             if output_csv and not df.empty:
                 df.to_csv(output_csv, index=False, encoding='utf-8')
-        
-        # 返回當前批次的結果
+
         return pd.DataFrame(all_defendants) if all_defendants else pd.DataFrame()
