@@ -37,15 +37,25 @@ body {
   overflow-x: hidden;
 }
 
-/* ===== 側邊欄優化 - 國泰透明綠風格 ===== */
+/* ===== 側邊欄 - 淡綠流水動畫 ===== */
 .ant-layout-sider {
-  background: rgba(255, 255, 255, 0.7) !important; /* 白底磨砂玻璃 */
-  backdrop-filter: blur(12px);
-  border-right: 1px solid rgba(0, 135, 62, 0.1);
-  box-shadow: 4px 0 15px rgba(0, 0, 0, 0.02);
+  background: linear-gradient(
+    170deg,
+    rgba(240, 253, 246, 0.95) 0%,
+    rgba(209, 245, 228, 0.90) 20%,
+    rgba(236, 252, 243, 0.93) 40%,
+    rgba(187, 238, 214, 0.88) 60%,
+    rgba(220, 249, 237, 0.92) 80%,
+    rgba(240, 253, 246, 0.95) 100%
+  ) !important;
+  background-size: 100% 300% !important;
+  animation: sidebar-water-flow 7s ease-in-out infinite !important;
+  backdrop-filter: blur(16px);
+  border-right: 1px solid rgba(0, 135, 62, 0.12) !important;
+  box-shadow: 2px 0 16px rgba(0, 135, 62, 0.06) !important;
 }
 
-/* 側邊欄選單文字與圖示 */
+/* 側邊欄選單 */
 .ant-menu {
   background: transparent !important;
   border: none !important;
@@ -53,29 +63,49 @@ body {
 
 .ant-menu-item {
   color: var(--gray-800) !important;
-  font-weight: 600 !important;
-  margin: 8px 12px !important;
-  border-radius: 12px !important;
-  transition: all 0.3s ease !important;
+  font-size: 15px !important;
+  font-weight: 500 !important;
+  margin: 4px 10px !important;
+  border-radius: 10px !important;
+  height: 44px !important;
+  line-height: 44px !important;
+  transition: all 0.2s ease !important;
+}
+
+.ant-menu-item .anticon {
+  font-size: 17px !important;
 }
 
 .ant-menu-item-selected {
-  background: rgba(0, 135, 62, 0.12) !important;
-  color: var(--primary-green-dark) !important;
+  background: rgba(0, 135, 62, 0.1) !important;
+  color: #00873e !important;
+  font-weight: 600 !important;
   box-shadow: none !important;
 }
 
-.ant-menu-item:hover:not(.ant-menu-item-selected) {
-  background: rgba(0, 135, 62, 0.08) !important;
-  color: var(--primary-green) !important;
+.ant-menu-item-selected .anticon {
+  color: #00873e !important;
 }
 
-/* 移除最下方深藍色收縮條 */
+.ant-menu-item:hover:not(.ant-menu-item-selected) {
+  background: rgba(0, 135, 62, 0.06) !important;
+  color: #00873e !important;
+}
+
+/* 水流動畫 */
+@keyframes sidebar-water-flow {
+  0%   { background-position: 50% 0%; }
+  50%  { background-position: 50% 100%; }
+  100% { background-position: 50% 0%; }
+}
+
+/* 收縮按鈕 */
 .ant-layout-sider-trigger {
-  background: rgba(255, 255, 255, 0.7) !important;
-  color: var(--primary-green) !important;
-  border-top: 1px solid rgba(0, 135, 62, 0.1);
-  backdrop-filter: blur(12px);
+  background: rgba(255, 255, 255, 0.82) !important;
+  color: var(--gray-600) !important;
+  border-top: 1px solid rgba(0, 135, 62, 0.08) !important;
+  backdrop-filter: blur(16px);
+  font-size: 15px !important;
 }
 
 /* 標題字體加強 */
@@ -360,13 +390,6 @@ code {
 /* ===== Ant Design 客製化樣式 ===== */
 .ant-layout {
   background: transparent !important;
-}
-
-.ant-layout-sider {
-  background: linear-gradient(180deg,
-      rgba(0, 135, 62, 0.95) 0%,
-      rgba(0, 104, 48, 0.97) 100%) !important;
-  box-shadow: 4px 0 20px rgba(0, 135, 62, 0.15);
 }
 
 .ant-layout-header {

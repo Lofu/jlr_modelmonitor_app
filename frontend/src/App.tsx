@@ -120,41 +120,49 @@ function App() {
             top: 0,
             bottom: 0,
             zIndex: 100,
-            background: 'rgba(255, 255, 255, 0.75)', /* 強制行內覆寫背景 */
-            backdropFilter: 'blur(12px)',
-            borderRight: '1px solid rgba(0, 135, 62, 0.1)'
+            background: 'transparent',
+            backdropFilter: 'blur(16px)',
           }}
         >
-          {/* 側邊欄 Header */}
+          {/* 側邊欄 Header - 仿國泰樹形 Logo */}
           <div style={{
-            height: '48px',
-            margin: '16px 12px',
+            height: '64px',
+            margin: '12px 10px 4px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: collapsed ? 'center' : 'flex-start',
-            color: 'var(--gray-900)',
-            fontWeight: 'bold',
             transition: 'all 0.3s',
-            overflow: 'hidden'
+            overflow: 'hidden',
+            borderBottom: '1px solid rgba(0, 135, 62, 0.1)',
+            paddingBottom: '12px',
           }}>
-            <div style={{
-              minWidth: '28px',
-              height: '28px',
-              borderRadius: '6px',
-              background: 'linear-gradient(135deg, #00873e 0%, #00c45e 100%)',
-              boxShadow: '0 2px 6px rgba(0, 135, 62, 0.3)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              marginRight: collapsed ? '0' : '8px',
-              flexShrink: 0
-            }}>
-              {/* 使用自訂的樹狀圖示感 */}
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 19V5M5 11l7-7 7 7M5 19h14" />
-              </svg>
-            </div>
-            {!collapsed && <span style={{ whiteSpace: 'nowrap', fontSize: '15px', letterSpacing: '-0.3px', textOverflow: 'ellipsis', overflow: 'hidden' }}>法院判例模型評估系統</span>}
+            {/* 樹形 SVG */}
+            <svg
+              width={collapsed ? 32 : 36}
+              height={collapsed ? 32 : 36}
+              viewBox="0 0 48 52"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+              style={{ flexShrink: 0, marginRight: collapsed ? 0 : '10px', transition: 'all 0.3s' }}
+            >
+              {/* 樹幹 */}
+              <rect x="20" y="38" width="8" height="12" rx="3" fill="#00873e" />
+              {/* 樹冠底層（最大） */}
+              <ellipse cx="24" cy="30" rx="18" ry="13" fill="#00a651" />
+              {/* 樹冠中層 */}
+              <ellipse cx="24" cy="22" rx="14" ry="11" fill="#00873e" />
+              {/* 樹冠頂層（最小、最深） */}
+              <ellipse cx="24" cy="15" rx="9" ry="8" fill="#006830" />
+              {/* 高光 */}
+              <ellipse cx="20" cy="12" rx="4" ry="3" fill="rgba(255,255,255,0.15)" />
+            </svg>
+
+            {!collapsed && (
+              <div style={{ overflow: 'hidden' }}>
+                <div style={{ whiteSpace: 'nowrap', fontSize: '15px', fontWeight: 800, color: '#111827', letterSpacing: '-0.3px', lineHeight: 1.25 }}>法院判例評估</div>
+                <div style={{ whiteSpace: 'nowrap', fontSize: '10.5px', fontWeight: 400, color: '#6b7280', letterSpacing: '0.5px', marginTop: '2px' }}>Model Monitor</div>
+              </div>
+            )}
           </div>
           <Menu
             theme="light"
@@ -182,13 +190,22 @@ function App() {
             boxShadow: '0 2px 8px rgba(0, 135, 62, 0.08)',
             color: 'var(--primary-green-dark)'
           }}>
-            <span style={{
-              background: 'linear-gradient(135deg, #00873e 0%, #006830 100%)',
-              WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent',
-              backgroundClip: 'text'
-            }}>
-              ⚖️ 法院判例模型評估系統
+            <span style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <svg width="28" height="30" viewBox="0 0 48 52" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <rect x="20" y="38" width="8" height="12" rx="3" fill="#00873e" />
+                <ellipse cx="24" cy="30" rx="18" ry="13" fill="#00a651" />
+                <ellipse cx="24" cy="22" rx="14" ry="11" fill="#00873e" />
+                <ellipse cx="24" cy="15" rx="9" ry="8" fill="#006830" />
+                <ellipse cx="20" cy="12" rx="4" ry="3" fill="rgba(255,255,255,0.15)" />
+              </svg>
+              <span style={{
+                background: 'linear-gradient(135deg, #00873e 0%, #006830 100%)',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+                backgroundClip: 'text'
+              }}>
+                法院判例模型評估系統
+              </span>
             </span>
           </Header>
           <Content style={{ margin: '24px 16px 0' }}>
