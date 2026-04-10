@@ -1,0 +1,436 @@
+/* ===== CSS 變數 - 國泰風格配色 ===== */
+:root {
+  /* 國泰綠色系 */
+  --primary-green: #00873e;
+  --primary-green-light: #00a651;
+  --primary-green-lighter: #00c45e;
+  --primary-green-dark: #006830;
+
+  /* 輔助色 */
+  --accent-gold: #ffd500;
+  --accent-gold-light: #ffe44d;
+
+  /* 中性色 */
+  --white: #ffffff;
+  --gray-50: #f8faf9;
+  --gray-100: #e8f5ed;
+  --gray-200: #d1e8db;
+  --gray-300: #b0d9c2;
+  --gray-600: #6b7280;
+  --gray-800: #1f2937;
+  --gray-900: #111827;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  font-family: 'Microsoft JhengHei', 'PingFang TC', 'Noto Sans TC', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background: var(--gray-50);
+  overflow-x: hidden;
+}
+
+/* ===== 側邊欄優化 - 國泰透明綠風格 ===== */
+.ant-layout-sider {
+  background: rgba(255, 255, 255, 0.7) !important; /* 白底磨砂玻璃 */
+  backdrop-filter: blur(12px);
+  border-right: 1px solid rgba(0, 135, 62, 0.1);
+  box-shadow: 4px 0 15px rgba(0, 0, 0, 0.02);
+}
+
+/* 側邊欄選單文字與圖示 */
+.ant-menu {
+  background: transparent !important;
+  border: none !important;
+}
+
+.ant-menu-item {
+  color: var(--gray-800) !important;
+  font-weight: 600 !important;
+  margin: 8px 12px !important;
+  border-radius: 12px !important;
+  transition: all 0.3s ease !important;
+}
+
+.ant-menu-item-selected {
+  background: rgba(0, 135, 62, 0.12) !important;
+  color: var(--primary-green-dark) !important;
+  box-shadow: none !important;
+}
+
+.ant-menu-item:hover:not(.ant-menu-item-selected) {
+  background: rgba(0, 135, 62, 0.08) !important;
+  color: var(--primary-green) !important;
+}
+
+/* 移除最下方深藍色收縮條 */
+.ant-layout-sider-trigger {
+  background: rgba(255, 255, 255, 0.7) !important;
+  color: var(--primary-green) !important;
+  border-top: 1px solid rgba(0, 135, 62, 0.1);
+  backdrop-filter: blur(12px);
+}
+
+/* 標題字體加強 */
+h1,
+h2,
+h3 {
+  color: var(--gray-900);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
+    monospace;
+}
+
+#root {
+  min-height: 100vh;
+  position: relative;
+}
+
+/* ===== 波動背景動畫（國泰風格） ===== */
+.wave-background {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: -1;
+  background:
+    radial-gradient(ellipse at 50% 0%, rgba(255, 255, 255, 1) 0%, rgba(250, 252, 251, 0.95) 30%, transparent 70%),
+    linear-gradient(135deg, #ffffff 0%, #f8fdf9 25%, #f0f9f4 50%, #e8f5ed 75%, #e0f2e9 100%);
+  overflow: hidden;
+}
+
+/* 綠色暈染層 */
+.wave-background::before {
+  content: '';
+  position: absolute;
+  top: -15%;
+  left: -15%;
+  width: 130%;
+  height: 130%;
+  background:
+    radial-gradient(ellipse 800px 600px at 25% 30%,
+      rgba(34, 197, 94, 0.18) 0%,
+      rgba(34, 197, 94, 0.12) 20%,
+      rgba(16, 185, 129, 0.08) 40%,
+      rgba(5, 150, 105, 0.04) 60%,
+      transparent 80%),
+    radial-gradient(ellipse 700px 700px at 75% 70%,
+      rgba(16, 185, 129, 0.15) 0%,
+      rgba(5, 150, 105, 0.1) 25%,
+      rgba(4, 120, 87, 0.06) 50%,
+      transparent 75%),
+    radial-gradient(ellipse 600px 800px at 10% 80%,
+      rgba(34, 197, 94, 0.12) 0%,
+      rgba(22, 163, 74, 0.07) 30%,
+      rgba(21, 128, 61, 0.03) 60%,
+      transparent 85%);
+  animation: float-smooth 28s ease-in-out infinite;
+  mix-blend-mode: multiply;
+  filter: blur(60px);
+}
+
+/* 金色暈染層 */
+.wave-background::after {
+  content: '';
+  position: absolute;
+  top: -15%;
+  left: -15%;
+  width: 130%;
+  height: 130%;
+  background:
+    radial-gradient(ellipse 750px 550px at 70% 25%,
+      rgba(251, 191, 36, 0.2) 0%,
+      rgba(245, 158, 11, 0.14) 22%,
+      rgba(234, 179, 8, 0.09) 45%,
+      rgba(202, 138, 4, 0.04) 65%,
+      transparent 85%),
+    radial-gradient(ellipse 650px 750px at 35% 75%,
+      rgba(252, 211, 77, 0.16) 0%,
+      rgba(251, 191, 36, 0.11) 28%,
+      rgba(245, 158, 11, 0.06) 55%,
+      transparent 80%),
+    radial-gradient(ellipse 500px 600px at 85% 60%,
+      rgba(234, 179, 8, 0.14) 0%,
+      rgba(202, 138, 4, 0.08) 32%,
+      rgba(161, 98, 7, 0.03) 62%,
+      transparent 88%);
+  animation: float-smooth-reverse 32s ease-in-out infinite;
+  mix-blend-mode: multiply;
+  filter: blur(70px);
+}
+
+/* 整體漸層覆蓋層 */
+.gradient-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background:
+    linear-gradient(135deg,
+      rgba(0, 135, 62, 0.02) 0%,
+      rgba(255, 213, 0, 0.04) 20%,
+      rgba(0, 166, 81, 0.02) 40%,
+      rgba(255, 228, 77, 0.05) 60%,
+      rgba(0, 196, 94, 0.03) 80%,
+      rgba(255, 243, 133, 0.04) 100%);
+  animation: gradient-shift 30s ease-in-out infinite alternate;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* 波浪 SVG 樣式 */
+.waves {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  height: 15vh;
+  min-height: 100px;
+  max-height: 150px;
+}
+
+.waves-bottom {
+  bottom: 0;
+  margin-bottom: -7px;
+}
+
+.waves-middle {
+  top: 50%;
+  transform: translateY(-50%) rotate(180deg);
+  opacity: 0.6;
+}
+
+.waves-top {
+  top: 10%;
+  opacity: 0.4;
+}
+
+/* 動畫定義 */
+@keyframes float-smooth {
+
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1) rotate(0deg);
+  }
+
+  25% {
+    transform: translate(-2%, 3%) scale(1.05) rotate(1deg);
+  }
+
+  50% {
+    transform: translate(3%, -2%) scale(0.98) rotate(-1deg);
+  }
+
+  75% {
+    transform: translate(-1%, 2%) scale(1.02) rotate(0.5deg);
+  }
+}
+
+@keyframes float-smooth-reverse {
+
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1) rotate(0deg);
+  }
+
+  20% {
+    transform: translate(3%, -2%) scale(1.04) rotate(-1.5deg);
+  }
+
+  40% {
+    transform: translate(-2%, 3%) scale(0.96) rotate(1deg);
+  }
+
+  60% {
+    transform: translate(2%, 2%) scale(1.03) rotate(-0.5deg);
+  }
+
+  80% {
+    transform: translate(-1%, -2%) scale(0.99) rotate(1deg);
+  }
+}
+
+@keyframes gradient-shift {
+  0% {
+    opacity: 0.6;
+    filter: hue-rotate(0deg);
+  }
+
+  50% {
+    opacity: 0.8;
+    filter: hue-rotate(10deg);
+  }
+
+  100% {
+    opacity: 0.6;
+    filter: hue-rotate(0deg);
+  }
+}
+
+@keyframes move-forever {
+  0% {
+    transform: translate3d(-90px, 0, 0);
+  }
+
+  100% {
+    transform: translate3d(85px, 0, 0);
+  }
+}
+
+@keyframes move-forever-reverse {
+  0% {
+    transform: translate3d(85px, 0, 0);
+  }
+
+  100% {
+    transform: translate3d(-90px, 0, 0);
+  }
+}
+
+/* 波浪動畫 */
+.parallax>use {
+  animation: move-forever 25s cubic-bezier(0.55, 0.5, 0.45, 0.5) infinite;
+}
+
+.parallax>use:nth-child(1) {
+  animation-delay: -2s;
+  animation-duration: 7s;
+}
+
+.parallax>use:nth-child(2) {
+  animation-delay: -3s;
+  animation-duration: 10s;
+}
+
+.parallax>use:nth-child(3) {
+  animation-delay: -4s;
+  animation-duration: 13s;
+}
+
+.parallax>use:nth-child(4) {
+  animation-delay: -5s;
+  animation-duration: 20s;
+}
+
+.parallax-middle>use {
+  animation: move-forever-reverse 30s cubic-bezier(0.55, 0.5, 0.45, 0.5) infinite;
+}
+
+.parallax-middle>use:nth-child(1) {
+  animation-delay: -3s;
+  animation-duration: 8s;
+}
+
+.parallax-middle>use:nth-child(2) {
+  animation-delay: -4s;
+  animation-duration: 11s;
+}
+
+.parallax-middle>use:nth-child(3) {
+  animation-delay: -5s;
+  animation-duration: 14s;
+}
+
+.parallax-top>use {
+  animation: move-forever 35s cubic-bezier(0.55, 0.5, 0.45, 0.5) infinite;
+}
+
+.parallax-top>use:nth-child(1) {
+  animation-delay: -6s;
+  animation-duration: 12s;
+}
+
+.parallax-top>use:nth-child(2) {
+  animation-delay: -7s;
+  animation-duration: 15s;
+}
+
+/* ===== Ant Design 客製化樣式 ===== */
+.ant-layout {
+  background: transparent !important;
+}
+
+.ant-layout-sider {
+  background: linear-gradient(180deg,
+      rgba(0, 135, 62, 0.95) 0%,
+      rgba(0, 104, 48, 0.97) 100%) !important;
+  box-shadow: 4px 0 20px rgba(0, 135, 62, 0.15);
+}
+
+.ant-layout-header {
+  background: rgba(255, 255, 255, 0.85) !important;
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid rgba(0, 135, 62, 0.1);
+  box-shadow: 0 2px 8px rgba(0, 135, 62, 0.08);
+}
+
+.ant-card {
+  background: rgba(255, 255, 255, 0.75) !important;
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(0, 135, 62, 0.1);
+  box-shadow: 0 4px 12px rgba(0, 135, 62, 0.08);
+  border-radius: 12px;
+  transition: all 0.3s ease;
+}
+
+.ant-card:hover {
+  box-shadow: 0 8px 20px rgba(0, 135, 62, 0.15);
+  transform: translateY(-2px);
+}
+
+.ant-btn-primary {
+  background: linear-gradient(135deg,
+      var(--primary-green) 0%,
+      var(--primary-green-light) 100%);
+  border: none;
+  box-shadow: 0 4px 12px rgba(0, 135, 62, 0.3);
+  transition: all 0.3s ease;
+}
+
+.ant-btn-primary:hover {
+  background: linear-gradient(135deg,
+      var(--primary-green-light) 0%,
+      var(--primary-green-lighter) 100%);
+  box-shadow: 0 6px 16px rgba(0, 135, 62, 0.4);
+  transform: translateY(-2px);
+}
+
+.ant-progress-bg {
+  background: linear-gradient(90deg,
+      var(--primary-green) 0%,
+      var(--primary-green-light) 50%,
+      var(--accent-gold) 100%);
+}
+
+.ant-statistic-content {
+  color: var(--primary-green-dark);
+}
+
+.ant-alert-info {
+  background: rgba(255, 255, 255, 0.8);
+  border: 1px solid rgba(0, 135, 62, 0.2);
+  backdrop-filter: blur(10px);
+}
+
+.ant-table {
+  background: rgba(255, 255, 255, 0.75) !important;
+  backdrop-filter: blur(10px);
+}
+
+.ant-table-thead>tr>th {
+  background: rgba(0, 135, 62, 0.08) !important;
+  color: var(--primary-green-dark);
+  font-weight: 600;
+}
