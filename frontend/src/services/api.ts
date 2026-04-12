@@ -60,6 +60,37 @@ export interface AnalyzeRequest {
   model_files: string[]
 }
 
+export interface BQRun {
+  run_id: string
+  model_id: string
+  provider: string
+  prompt_hash: string
+  prompt_preview: string
+  started_at: string
+  completed_at: string
+  total_files: number
+  success_count: number
+  error_count: number
+}
+
+export interface BQStatus {
+  dataset: string
+  project: string
+  tables: Record<string, { exists: boolean; rows: number }>
+}
+
+export interface BQAnalyzeRequest {
+  run_ids: string[]
+}
+
+export interface BQImportRequest {
+  jsonl_file: string
+  model_id: string
+  provider: string
+  location: string
+  prompt?: string
+}
+
 export interface ConfigInfo {
   pdf_dir: string
   pdf_count: number
@@ -103,6 +134,44 @@ export const deleteModelFile = (fileName: string): Promise<any> => {
 // 下載檔案
 export const downloadFile = (fileName: string): string => {
   return `${API_BASE_URL}/api/download/${fileName}`
+}
+
+// ============================================================================
+// BigQuery API 方法
+// ============================================================================
+
+// BQ 狀態
+export const getBQStatus = (): Promise<BQStatus> => {
+  return api.get('/api/bq/status')
+}
+
+// 列出 BQ 執行紀錄
+export const listBQRuns = (): Promise<BQRun[]> => {
+  return api.get('/api/bq/runs')
+}
+
+// 列出可匯入的 JSONL 檔案
+export const listJsonlFiles = (): Promise<any[]> => {
+  return api.get('/api/bq/jsonl-files')
+}
+
+// 匯入 JSONL 至 BQ
+export const importJsonlToBQ = (request: BQImportRequest): Promise<any> => {
+  return api.post('/api/bq/import-jsonl', request)
+}
+
+// 上傳 Ground Truth 至 BQ
+export const uploadGroundTruth = (file: File): Promise<any> => {
+  const formData = new FormData()
+  formData.append('file', file)
+  return api.post('/api/bq/upload-ground-truth', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
+}
+
+// BQ 準確度分析
+export const analyzeAccuracyBQ = (request: BQAnalyzeRequest): Promise<any> => {
+  return api.post('/api/analyze-bq', request)
 }
 
 // WebSocket 連接

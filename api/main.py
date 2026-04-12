@@ -12,8 +12,9 @@ import json
 import asyncio
 import threading
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
+import tempfile
 import traceback
 import os
 
@@ -62,6 +63,7 @@ from dashboard.config import (
 )
 from dashboard.extractor import PDFExtractor
 from dashboard.analyzer import AccuracyAnalyzer
+from dashboard.bq_client import BQClient
 
 # ============================================================================
 # FastAPI 應用初始化
@@ -108,6 +110,27 @@ class ModelInfo(BaseModel):
     file_size: int
     record_count: int  # CSV 檔案的記錄數量
     modified_time: str
+
+class BQAnalyzeRequest(BaseModel):
+    """BQ 準確度分析請求"""
+    run_ids: List[str]
+
+class BQImportRequest(BaseModel):
+    """JSONL 匯入 BQ 請求"""
+    jsonl_file: str        # OUTPUT_DIR 內的檔名
+    model_id: str
+    provider: str
+    location: str
+    prompt: Optional[str] = None
+
+# ============================================================================
+# BQ 客戶端 helper
+# ============================================================================
+def _get_bq(gcp_project: str = None) -> BQClient:
+    try:
+        return BQClient(gcp_project=gcp_project)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"BigQuery 連線失敗: {e}")
 
 # ============================================================================
 # WebSocket 連接管理
@@ -319,7 +342,8 @@ async def extract_pdfs(request: ExtractRequest):
         
         # 執行批次萃取 (使用 asyncio.to_thread 避免阻塞 event loop)
         pdf_file_names = [pdf.name for pdf in pdf_files]
-        
+        started_at = datetime.now(timezone.utc)
+
         result_df = await asyncio.to_thread(
             extractor.batch_extract,
             pdf_files=pdf_file_names,
@@ -328,7 +352,54 @@ async def extract_pdfs(request: ExtractRequest):
             progress_callback=progress_callback,
             max_runtime_minutes=request.max_runtime_minutes
         )
-        
+
+        completed_at = datetime.now(timezone.utc)
+
+        # 萃取完成後非同步寫入 BigQuery（失敗不影響主流程）
+        bq_run_id = None
+        try:
+            defendants = []
+            if jsonl_path.exists():
+                with open(jsonl_path, "r", encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if line:
+                            try:
+                                defendants.append(json.loads(line))
+                            except Exception:
+                                pass
+
+            prompt_used = request.system_prompt or SYSTEM_PROMPT
+            bq = await asyncio.to_thread(_get_bq, request.gcp_project)
+            bq_run_id = BQClient.make_run_id()
+
+            await asyncio.to_thread(
+                bq.save_run,
+                run_id=bq_run_id,
+                model_id=request.model_id,
+                provider=request.provider,
+                location=request.location,
+                gcp_project=request.gcp_project,
+                prompt=prompt_used,
+                started_at=started_at,
+                completed_at=completed_at,
+                total_files=len(pdf_files),
+                success_count=success_count,
+                error_count=error_count,
+            )
+            if defendants:
+                await asyncio.to_thread(
+                    bq.save_extractions,
+                    run_id=bq_run_id,
+                    model_id=request.model_id,
+                    prompt=prompt_used,
+                    defendants=defendants,
+                    extracted_at=completed_at,
+                )
+            logger.info(f"✅ BQ 寫入成功: run_id={bq_run_id}")
+        except Exception as bq_err:
+            logger.warning(f"⚠️ BQ 寫入失敗（不影響萃取結果）: {bq_err}")
+
         # 廣播完成
         await manager.broadcast({
             "type": "complete",
@@ -337,14 +408,15 @@ async def extract_pdfs(request: ExtractRequest):
             "errors": error_count,
             "csv_file": csv_filename
         })
-        
+
         return {
             "status": "success",
             "total": len(pdf_files),
             "success": success_count,
             "errors": error_count,
             "csv_file": csv_filename,
-            "jsonl_file": jsonl_filename
+            "jsonl_file": jsonl_filename,
+            "bq_run_id": bq_run_id,
         }
         
     except Exception as e:
@@ -463,6 +535,123 @@ async def download_file(file_name: str):
         filename=file_name,
         media_type="text/csv"
     )
+
+# ============================================================================
+# BigQuery API 路由
+# ============================================================================
+
+@app.get("/api/bq/status")
+async def bq_status():
+    """BigQuery 連線與各表格狀態"""
+    bq = await asyncio.to_thread(_get_bq)
+    return await asyncio.to_thread(bq.status)
+
+@app.get("/api/bq/runs")
+async def list_bq_runs():
+    """列出所有 BQ 執行紀錄（最新在前）"""
+    bq = await asyncio.to_thread(_get_bq)
+    return await asyncio.to_thread(bq.list_runs)
+
+@app.get("/api/bq/jsonl-files")
+async def list_jsonl_files():
+    """列出 outputs 目錄中可匯入的 JSONL 檔案"""
+    files = []
+    for jsonl_file in OUTPUT_DIR.glob("*.jsonl"):
+        stat = jsonl_file.stat()
+        files.append({
+            "name": jsonl_file.name,
+            "size": stat.st_size,
+            "modified_time": datetime.fromtimestamp(stat.st_mtime).isoformat(),
+        })
+    files.sort(key=lambda x: x["modified_time"], reverse=True)
+    return files
+
+@app.post("/api/bq/import-jsonl")
+async def import_jsonl_to_bq(request: BQImportRequest):
+    """將指定 JSONL 檔案匯入 BigQuery"""
+    jsonl_path = OUTPUT_DIR / request.jsonl_file
+    if not jsonl_path.exists():
+        raise HTTPException(status_code=404, detail=f"找不到檔案: {request.jsonl_file}")
+
+    bq = await asyncio.to_thread(_get_bq)
+    run_id = await asyncio.to_thread(
+        bq.import_jsonl,
+        jsonl_path=jsonl_path,
+        model_id=request.model_id,
+        provider=request.provider,
+        location=request.location,
+        prompt=request.prompt or SYSTEM_PROMPT,
+    )
+    return {"status": "success", "run_id": run_id}
+
+@app.post("/api/bq/upload-ground-truth")
+async def upload_ground_truth_to_bq(file: UploadFile = File(...)):
+    """上傳 Ground Truth CSV 至 BigQuery（全量覆寫）"""
+    content = await file.read()
+    with tempfile.NamedTemporaryFile(suffix=".csv", delete=False) as tmp:
+        tmp.write(content)
+        tmp_path = Path(tmp.name)
+
+    try:
+        bq = await asyncio.to_thread(_get_bq)
+        count = await asyncio.to_thread(bq.upload_ground_truth, tmp_path)
+        return {"status": "success", "count": count}
+    finally:
+        tmp_path.unlink(missing_ok=True)
+
+@app.post("/api/analyze-bq")
+async def analyze_accuracy_bq(request: BQAnalyzeRequest):
+    """使用 BigQuery 資料進行準確度分析"""
+    try:
+        bq = await asyncio.to_thread(_get_bq)
+
+        # 取得萃取資料
+        extractions_df = await asyncio.to_thread(bq.get_extractions_by_runs, request.run_ids)
+        if extractions_df.empty:
+            raise HTTPException(status_code=404, detail="找不到指定的萃取資料")
+
+        # 取得 ground truth
+        ground_truth_df = await asyncio.to_thread(bq.get_ground_truth)
+        if ground_truth_df.empty:
+            raise HTTPException(status_code=404, detail="找不到 Ground Truth，請先上傳")
+
+        analyzer = AccuracyAnalyzer(ground_truth_df)
+
+        model_dfs = {}
+        model_display_names = {}
+
+        for model_id in extractions_df["model_id"].unique():
+            subset = extractions_df[extractions_df["model_id"] == model_id].copy()
+            df = subset[["file_name", "NAME", "SEX", "DATE_OF_BIRTH", "PLACE_OF_BIRTH", "case_link"]].copy()
+            df = df.rename(columns={"case_link": "CASE_LINK"})
+
+            loaded = analyzer.load_model_result(df, model_id)
+            norm_id = analyzer._normalize_model_name(model_id)
+            model_dfs[norm_id] = loaded
+            model_display_names[norm_id] = model_id
+
+        if not model_dfs:
+            raise HTTPException(status_code=404, detail="無法載入任何模型資料")
+
+        merged_df = analyzer.merge_results(model_dfs)
+        accuracy_df, _ = analyzer.calculate_accuracy(merged_df, list(model_dfs.keys()))
+        name_accuracy_df = analyzer.calculate_name_accuracy(merged_df, list(model_dfs.keys()))
+        full_accuracy_df = pd.concat([name_accuracy_df, accuracy_df], axis=0).reset_index(drop=True)
+
+        return {
+            "success": True,
+            "model_names": list(model_dfs.keys()),
+            "model_display_names": model_display_names,
+            "accuracy_summary": full_accuracy_df.to_dict(orient="records"),
+            "field_list": ["NAME", "SEX", "DATE_OF_BIRTH", "DATE_OF_BIRTH_YEAR", "PLACE_OF_BIRTH"],
+            "total_records": len(merged_df),
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.websocket("/ws/progress")
 async def websocket_endpoint(websocket: WebSocket):
