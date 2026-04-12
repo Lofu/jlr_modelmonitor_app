@@ -1,18 +1,16 @@
 import { useState } from 'react'
-import { Routes, Route } from 'react-router-dom'
 import { Layout, Menu, ConfigProvider } from 'antd'
 import {
   FileTextOutlined,
   BarChartOutlined,
   FolderOpenOutlined,
-  RocketOutlined
 } from '@ant-design/icons'
 import { useNavigate, useLocation } from 'react-router-dom'
 import ExtractPage from './pages/ExtractPage'
 import AnalyzePage from './pages/AnalyzePage'
 import FilesPage from './pages/FilesPage'
 
-const { Header, Content, Sider } = Layout
+const { Content, Sider } = Layout
 
 function App() {
   const [collapsed, setCollapsed] = useState(false)
@@ -173,42 +171,12 @@ function App() {
             style={{ background: 'transparent', border: 'none' }}
           />
         </Sider>
-        <Layout style={{ 
-          marginLeft: collapsed ? 80 : 220, 
+        <Layout style={{
+          marginLeft: collapsed ? 80 : 220,
           background: 'transparent',
           transition: 'margin-left 0.2s'
         }}>
-          <Header style={{
-            padding: '0 32px',
-            display: 'flex',
-            alignItems: 'center',
-            fontSize: 22,
-            fontWeight: 'bold',
-            background: 'rgba(255, 255, 255, 0.85)',
-            backdropFilter: 'blur(10px)',
-            borderBottom: '1px solid rgba(0, 135, 62, 0.1)',
-            boxShadow: '0 2px 8px rgba(0, 135, 62, 0.08)',
-            color: 'var(--primary-green-dark)'
-          }}>
-            <span style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <svg width="28" height="30" viewBox="0 0 48 52" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <rect x="20" y="38" width="8" height="12" rx="3" fill="#00873e" />
-                <ellipse cx="24" cy="30" rx="18" ry="13" fill="#00a651" />
-                <ellipse cx="24" cy="22" rx="14" ry="11" fill="#00873e" />
-                <ellipse cx="24" cy="15" rx="9" ry="8" fill="#006830" />
-                <ellipse cx="20" cy="12" rx="4" ry="3" fill="rgba(255,255,255,0.15)" />
-              </svg>
-              <span style={{
-                background: 'linear-gradient(135deg, #00873e 0%, #006830 100%)',
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor: 'transparent',
-                backgroundClip: 'text'
-              }}>
-                法院判例模型評估系統
-              </span>
-            </span>
-          </Header>
-          <Content style={{ margin: '24px 16px 0' }}>
+          <Content style={{ margin: '20px 20px 0' }}>
             <div
               style={{
                 padding: 24,
