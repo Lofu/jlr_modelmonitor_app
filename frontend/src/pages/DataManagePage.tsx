@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import {
   Card, Table, Button, Space, Popconfirm, message, Tag,
   Typography, Tabs, Row, Col, Statistic, Drawer, Alert,
-  Badge, Select, Input,
+  Badge, Select, Input, Tooltip,
 } from 'antd'
 import {
   DeleteOutlined, ReloadOutlined, EyeOutlined,
@@ -170,27 +170,37 @@ const RunsTab = ({ onRunsChange }: { onRunsChange: () => void }) => {
 
   // 萃取明細欄位（對應 BQ extractions schema 全欄位）
   const extractionCols: ColumnsType<any> = [
-    { title: 'run_id',        dataIndex: 'run_id',        key: 'run_id',        width: 100, ellipsis: true,
-      render: (v: string) => <Text type="secondary" style={{ fontSize: 10 }}>{v}</Text> },
-    { title: 'model_id',      dataIndex: 'model_id',      key: 'model_id',      width: 180, ellipsis: true },
-    { title: 'prompt_hash',   dataIndex: 'prompt_hash',   key: 'prompt_hash',   width: 100,
+    { title: 'run_id', dataIndex: 'run_id', key: 'run_id', width: 120, ellipsis: true,
+      render: (v: string) => (
+        <Tooltip title={v}>
+          <Text type="secondary" style={{ fontSize: 10 }}>{v}</Text>
+        </Tooltip>
+      )},
+    { title: 'model_id', dataIndex: 'model_id', key: 'model_id', width: 200, ellipsis: true,
+      render: (v: string) => (
+        <Tooltip title={v}>
+          <Text style={{ fontSize: 12 }}>{v}</Text>
+        </Tooltip>
+      )},
+    { title: 'prompt_hash', dataIndex: 'prompt_hash', key: 'prompt_hash', width: 110,
       render: (v: string) => <Text code style={{ fontSize: 10 }}>{v}</Text> },
-    { title: 'extracted_at',  dataIndex: 'extracted_at',  key: 'extracted_at',  width: 150,
+    { title: 'extracted_at', dataIndex: 'extracted_at', key: 'extracted_at', width: 150,
       render: (t: string) => t ? dayjs(t).format('YYYY-MM-DD HH:mm') : '-' },
-    { title: 'doc_id',        dataIndex: 'doc_id',        key: 'doc_id',        width: 160, ellipsis: true },
-    { title: 'file_name',     dataIndex: 'file_name',     key: 'file_name',     width: 180, ellipsis: true },
-    { title: 'case_link',     dataIndex: 'case_link',     key: 'case_link',     width: 80,
+    { title: 'doc_id', dataIndex: 'doc_id', key: 'doc_id', width: 160, ellipsis: true,
+      render: (v: string) => <Tooltip title={v}><Text style={{ fontSize: 12 }}>{v}</Text></Tooltip> },
+    { title: 'file_name', dataIndex: 'file_name', key: 'file_name', width: 180, ellipsis: true,
+      render: (v: string) => <Tooltip title={v}><Text style={{ fontSize: 12 }}>{v}</Text></Tooltip> },
+    { title: 'case_link', dataIndex: 'case_link', key: 'case_link', width: 80,
       render: (v: string) => v ? <a href={v} target="_blank" rel="noreferrer">連結</a> : '-' },
-    { title: 'NAME',          dataIndex: 'NAME',          key: 'NAME',          width: 130 },
-    { title: 'SEX',           dataIndex: 'SEX',           key: 'SEX',           width: 55 },
-    { title: 'DATE_OF_BIRTH', dataIndex: 'DATE_OF_BIRTH', key: 'dob',           width: 120 },
-    { title: 'PLACE_OF_BIRTH',dataIndex: 'PLACE_OF_BIRTH',key: 'pob',           width: 160, ellipsis: true },
-    { title: 'raw_json',      dataIndex: 'raw_json',      key: 'raw_json',      width: 80,
+    { title: 'NAME',           dataIndex: 'NAME',          key: 'NAME', width: 130 },
+    { title: 'SEX',            dataIndex: 'SEX',           key: 'SEX',  width: 55 },
+    { title: 'DATE_OF_BIRTH',  dataIndex: 'DATE_OF_BIRTH', key: 'dob',  width: 120 },
+    { title: 'PLACE_OF_BIRTH', dataIndex: 'PLACE_OF_BIRTH',key: 'pob',  width: 160, ellipsis: true },
+    { title: 'raw_json', dataIndex: 'raw_json', key: 'raw_json', width: 80,
       render: (v: string) => v
-        ? <Text
-            style={{ fontSize: 10, cursor: 'pointer', color: '#00873e' }}
-            title={v}
-          >查看</Text>
+        ? <Tooltip title={<pre style={{ maxWidth: 400, maxHeight: 300, overflow: 'auto', fontSize: 11 }}>{JSON.stringify(JSON.parse(v), null, 2)}</pre>}>
+            <Text style={{ fontSize: 10, color: '#00873e', cursor: 'pointer' }}>查看</Text>
+          </Tooltip>
         : '-' },
   ]
 
@@ -410,62 +420,39 @@ const ExtractionsTab = ({ totalRows }: { totalRows: number }) => {
   })
 
   const columns: ColumnsType<any> = [
-    {
-      title: 'run_id',
-      dataIndex: 'run_id',
-      key: 'run_id',
-      width: 100,
-      ellipsis: true,
-      render: (v: string) => <Text type="secondary" style={{ fontSize: 10 }}>{v}</Text>,
-    },
-    {
-      title: 'model_id',
-      dataIndex: 'model_id',
-      key: 'model_id',
-      width: 200,
+    { title: 'run_id', dataIndex: 'run_id', key: 'run_id', width: 120, ellipsis: true,
+      render: (v: string) => (
+        <Tooltip title={v}><Text type="secondary" style={{ fontSize: 10 }}>{v}</Text></Tooltip>
+      )},
+    { title: 'model_id', dataIndex: 'model_id', key: 'model_id', width: 200,
       render: (m: string) => (
-        <Space size={4}>
-          <ProviderTag provider={m?.toLowerCase().includes('gemini') ? 'gemini' : m?.toLowerCase().includes('claude') ? 'claude' : ''} />
-          <Text style={{ fontSize: 12 }}>{m}</Text>
-        </Space>
-      ),
-    },
-    {
-      title: 'prompt_hash',
-      dataIndex: 'prompt_hash',
-      key: 'prompt_hash',
-      width: 100,
-      render: (v: string) => <Text code style={{ fontSize: 10 }}>{v}</Text>,
-    },
-    {
-      title: 'extracted_at',
-      dataIndex: 'extracted_at',
-      key: 'extracted_at',
-      width: 150,
-      render: (t: string) => t ? dayjs(t).format('YYYY-MM-DD HH:mm') : '-',
-    },
-    { title: 'doc_id',        dataIndex: 'doc_id',        key: 'doc_id',        width: 160, ellipsis: true },
-    { title: 'file_name',     dataIndex: 'file_name',     key: 'file_name',     width: 180, ellipsis: true },
-    {
-      title: 'case_link',
-      dataIndex: 'case_link',
-      key: 'case_link',
-      width: 80,
-      render: (v: string) => v ? <a href={v} target="_blank" rel="noreferrer">連結</a> : '-',
-    },
-    { title: 'NAME',          dataIndex: 'NAME',          key: 'NAME',          width: 130 },
-    { title: 'SEX',           dataIndex: 'SEX',           key: 'SEX',           width: 55 },
-    { title: 'DATE_OF_BIRTH', dataIndex: 'DATE_OF_BIRTH', key: 'dob',           width: 120 },
-    { title: 'PLACE_OF_BIRTH',dataIndex: 'PLACE_OF_BIRTH',key: 'pob',           width: 160, ellipsis: true },
-    {
-      title: 'raw_json',
-      dataIndex: 'raw_json',
-      key: 'raw_json',
-      width: 80,
+        <Tooltip title={m}>
+          <Space size={4}>
+            <ProviderTag provider={m?.toLowerCase().includes('gemini') ? 'gemini' : m?.toLowerCase().includes('claude') ? 'claude' : ''} />
+            <Text style={{ fontSize: 12 }}>{m}</Text>
+          </Space>
+        </Tooltip>
+      )},
+    { title: 'prompt_hash', dataIndex: 'prompt_hash', key: 'prompt_hash', width: 110,
+      render: (v: string) => <Text code style={{ fontSize: 10 }}>{v}</Text> },
+    { title: 'extracted_at', dataIndex: 'extracted_at', key: 'extracted_at', width: 150,
+      render: (t: string) => t ? dayjs(t).format('YYYY-MM-DD HH:mm') : '-' },
+    { title: 'doc_id', dataIndex: 'doc_id', key: 'doc_id', width: 160, ellipsis: true,
+      render: (v: string) => <Tooltip title={v}><Text style={{ fontSize: 12 }}>{v}</Text></Tooltip> },
+    { title: 'file_name', dataIndex: 'file_name', key: 'file_name', width: 180, ellipsis: true,
+      render: (v: string) => <Tooltip title={v}><Text style={{ fontSize: 12 }}>{v}</Text></Tooltip> },
+    { title: 'case_link', dataIndex: 'case_link', key: 'case_link', width: 80,
+      render: (v: string) => v ? <a href={v} target="_blank" rel="noreferrer">連結</a> : '-' },
+    { title: 'NAME',           dataIndex: 'NAME',          key: 'NAME', width: 130 },
+    { title: 'SEX',            dataIndex: 'SEX',           key: 'SEX',  width: 55 },
+    { title: 'DATE_OF_BIRTH',  dataIndex: 'DATE_OF_BIRTH', key: 'dob',  width: 120 },
+    { title: 'PLACE_OF_BIRTH', dataIndex: 'PLACE_OF_BIRTH',key: 'pob',  width: 160, ellipsis: true },
+    { title: 'raw_json', dataIndex: 'raw_json', key: 'raw_json', width: 80,
       render: (v: string) => v
-        ? <Text style={{ fontSize: 10, color: '#00873e', cursor: 'pointer' }} title={v}>查看</Text>
-        : '-',
-    },
+        ? <Tooltip title={<pre style={{ maxWidth: 400, maxHeight: 300, overflow: 'auto', fontSize: 11 }}>{JSON.stringify(JSON.parse(v), null, 2)}</pre>}>
+            <Text style={{ fontSize: 10, color: '#00873e', cursor: 'pointer' }}>查看</Text>
+          </Tooltip>
+        : '-' },
   ]
 
   return (

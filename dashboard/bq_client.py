@@ -8,7 +8,7 @@ import json
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import List
 import pandas as pd
 
 from google.cloud import bigquery
@@ -337,14 +337,17 @@ class BQClient:
 
         defendants = []
         for _, row in df.iterrows():
-            doc_id = col(row, "DOC_ID", "DEFENDANT_ID")
             case_link = col(row, "CASE_LINK")
-            # 若 doc_id 空則從 case_link 解析
-            if not doc_id and case_link:
+            # 優先從 case_link 解析真實文件 ID（如 2ta462057t1cvn）
+            doc_id = ""
+            if case_link:
                 import re
                 mm = re.search(r"\.vn/([^/]+)/chi", case_link)
                 if mm:
                     doc_id = mm.group(1)
+            # fallback：使用 DOC_ID 或 DEFENDANT_ID
+            if not doc_id:
+                doc_id = col(row, "DOC_ID", "DEFENDANT_ID")
             defendants.append({
                 "DOC_ID":         doc_id,
                 "CASE_LINK":      case_link,
