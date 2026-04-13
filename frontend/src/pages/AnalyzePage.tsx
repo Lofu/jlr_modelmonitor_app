@@ -266,8 +266,13 @@ const AnalyzePage = () => {
                                   </Text>
                                 </Col>
                               </Row>
-                              <Text type="secondary" style={{ fontSize: 10, color: '#9ca3af' }}>
-                                run: {run.run_id.slice(0, 8)} · prompt: {run.prompt_hash}
+                              {run.prompt_preview && (
+                                <Text type="secondary" style={{ fontSize: 10, color: '#9ca3af', display: 'block' }}>
+                                  📝 {run.prompt_preview.slice(0, 50)}{run.prompt_preview.length > 50 ? '…' : ''}
+                                </Text>
+                              )}
+                              <Text type="secondary" style={{ fontSize: 10, color: '#bfbfbf' }}>
+                                run: {run.run_id.slice(0, 8)}
                               </Text>
                             </Space>
                           </Checkbox>

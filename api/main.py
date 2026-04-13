@@ -715,15 +715,23 @@ async def analyze_accuracy_bq(request: BQAnalyzeRequest):
         model_dfs = {}
         model_display_names = {}
 
-        for model_id in extractions_df["model_id"].unique():
-            subset = extractions_df[extractions_df["model_id"] == model_id].copy()
+        # 統計每個 model_id 出現的 run 數，超過 1 個時加 run_id 前 8 碼區分
+        run_model = extractions_df[["run_id", "model_id"]].drop_duplicates()
+        model_run_count = run_model.groupby("model_id")["run_id"].count()
+
+        for (run_id, model_id), subset in extractions_df.groupby(["run_id", "model_id"]):
+            if model_run_count[model_id] > 1:
+                label = f"{model_id} ({run_id[:8]})"
+            else:
+                label = model_id
+
             df = subset[["file_name", "NAME", "SEX", "DATE_OF_BIRTH", "PLACE_OF_BIRTH", "case_link"]].copy()
             df = df.rename(columns={"case_link": "CASE_LINK"})
 
-            loaded = analyzer.load_model_result(df, model_id)
-            norm_id = analyzer._normalize_model_name(model_id)
+            loaded = analyzer.load_model_result(df, label)
+            norm_id = analyzer._normalize_model_name(label)
             model_dfs[norm_id] = loaded
-            model_display_names[norm_id] = model_id
+            model_display_names[norm_id] = label
 
         if not model_dfs:
             raise HTTPException(status_code=404, detail="無法載入任何模型資料")
