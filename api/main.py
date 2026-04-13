@@ -658,6 +658,18 @@ async def delete_bq_runs(request: BQDeleteRunsRequest):
     count = await asyncio.to_thread(bq.delete_runs, request.run_ids)
     return {"status": "success", "deleted_runs": count}
 
+@app.get("/api/bq/ground-truth")
+async def get_ground_truth_rows(limit: int = 2000):
+    """查詢 ground_truth 表資料"""
+    try:
+        bq = await asyncio.to_thread(_get_bq)
+        df = await asyncio.to_thread(bq.get_ground_truth)
+        if df.empty:
+            return []
+        return df.fillna("").head(limit).to_dict(orient="records")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.delete("/api/bq/ground-truth")
 async def clear_ground_truth():
     """清空 ground_truth 表"""

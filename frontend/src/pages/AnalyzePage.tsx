@@ -11,7 +11,6 @@ import {
   message,
   Spin,
   Checkbox,
-  Divider,
   Typography,
   Tag,
 } from 'antd'
@@ -20,6 +19,7 @@ import {
   CheckCircleOutlined,
   ReloadOutlined,
 } from '@ant-design/icons'
+
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import { listBQRuns, analyzeAccuracyBQ, type BQRun } from '../services/api'
 import dayjs from 'dayjs'
@@ -179,228 +179,197 @@ const AnalyzePage = () => {
   const colors = ['#1890ff', '#52c41a', '#fa8c16', '#f5222d', '#722ed1', '#13c2c2']
 
   return (
-    <div>
+    <Space direction="vertical" style={{ width: '100%' }} size="large">
+
+      {/* ── 選擇執行版本 ── */}
       <Card
-        title={
+        title={<Space><BarChartOutlined /><span>選擇分析對象</span></Space>}
+        extra={
           <Space>
-            <BarChartOutlined />
-            <span>準確度分析</span>
+            <Text type="secondary" style={{ fontSize: 13 }}>
+              已選 <Text strong style={{ color: '#00873e' }}>{selectedRunIds.length}</Text> / {runs.length} 筆
+            </Text>
+            <Button size="small" onClick={() => setSelectedRunIds(runs.map((r) => r.run_id))}>全選</Button>
+            <Button size="small" onClick={() => setSelectedRunIds([])}>清除</Button>
+            <Button size="small" icon={<ReloadOutlined />} onClick={loadRuns} loading={loading}>重新整理</Button>
           </Space>
         }
       >
-        <Space direction="vertical" style={{ width: '100%' }} size="large">
-
-          {/* ── 選擇 BQ 執行版本 ── */}
-          <div>
-            <Divider orientation="left">
-              <Space>
-                📦 選擇要分析的 BQ 執行版本
-                <Button size="small" icon={<ReloadOutlined />} onClick={loadRuns} loading={loading}>
-                  重新整理
-                </Button>
-              </Space>
-            </Divider>
-
-            {loading ? (
-              <Spin tip="載入中..." />
-            ) : runs.length === 0 ? (
-              <Alert
-                message="尚無執行紀錄"
-                description="請先在「PDF 萃取」頁面執行萃取，或在「檔案管理」頁面匯入現有 JSONL 歷史資料。"
-                type="warning"
-                showIcon
-              />
-            ) : (
-              <>
-                <Row gutter={16} style={{ marginBottom: 12 }} align="middle">
-                  <Col>
-                    <Text type="secondary">
-                      已選 <Text strong style={{ color: '#00873e' }}>{selectedRunIds.length}</Text> / {runs.length} 筆
-                    </Text>
-                  </Col>
-                  <Col>
-                    <Space>
-                      <Button size="small" onClick={() => setSelectedRunIds(runs.map((r) => r.run_id))}>
-                        全選
-                      </Button>
-                      <Button size="small" danger onClick={() => setSelectedRunIds([])}>
-                        清除
-                      </Button>
+        {loading ? (
+          <div style={{ textAlign: 'center', padding: 32 }}><Spin tip="載入中..." /></div>
+        ) : runs.length === 0 ? (
+          <Alert
+            message="尚無執行紀錄"
+            description="請先在「PDF 萃取」頁面執行萃取，或在「檔案管理」頁面匯入 CSV。"
+            type="warning" showIcon
+          />
+        ) : (
+          <Row gutter={[12, 12]}>
+            {runs.map((run) => {
+              const selected = selectedRunIds.includes(run.run_id)
+              return (
+                <Col xs={24} sm={12} xl={8} key={run.run_id}>
+                  <Card
+                    size="small"
+                    style={{
+                      border: selected ? '2px solid #00873e' : '1px solid #e8e8e8',
+                      background: selected ? '#f6ffed' : '#fafafa',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s',
+                    }}
+                    onClick={() => toggleRun(run.run_id, !selected)}
+                  >
+                    <Space direction="vertical" size={6} style={{ width: '100%' }}>
+                      <Row justify="space-between" align="top">
+                        <Col>
+                          <Space size={6}>
+                            {getProviderTag(run.provider)}
+                            <Text strong style={{ fontSize: 14 }}>{run.model_id}</Text>
+                          </Space>
+                        </Col>
+                        <Col>
+                          <Checkbox checked={selected} onChange={(e) => { e.stopPropagation(); toggleRun(run.run_id, e.target.checked) }} />
+                        </Col>
+                      </Row>
+                      <Row gutter={16}>
+                        <Col>
+                          <Text type="secondary" style={{ fontSize: 12 }}>
+                            成功 <Text strong style={{ color: '#00873e' }}>{run.success_count}</Text> / {run.total_files} 筆
+                          </Text>
+                        </Col>
+                        <Col>
+                          <Text type="secondary" style={{ fontSize: 12 }}>
+                            {dayjs(run.started_at).format('YYYY-MM-DD HH:mm')}
+                          </Text>
+                        </Col>
+                      </Row>
+                      {run.prompt_preview && (
+                        <Text type="secondary" style={{ fontSize: 11, display: 'block', lineHeight: 1.4 }}>
+                          {run.prompt_preview.slice(0, 60)}{run.prompt_preview.length > 60 ? '…' : ''}
+                        </Text>
+                      )}
+                      <Text type="secondary" style={{ fontSize: 11, color: '#bfbfbf' }}>
+                        run: {run.run_id.slice(0, 8)}
+                      </Text>
                     </Space>
-                  </Col>
-                </Row>
+                  </Card>
+                </Col>
+              )
+            })}
+          </Row>
+        )}
+      </Card>
 
-                <Row gutter={[12, 12]}>
-                  {runs.map((run) => {
-                    const selected = selectedRunIds.includes(run.run_id)
-                    return (
-                      <Col span={12} key={run.run_id}>
-                        <Card
-                          size="small"
-                          style={{
-                            border: selected ? '2px solid #00873e' : '1px solid #d9d9d9',
-                            background: selected ? 'rgba(0,135,62,0.04)' : 'transparent',
-                            cursor: 'pointer',
-                          }}
-                          onClick={() => toggleRun(run.run_id, !selected)}
-                        >
-                          <Checkbox
-                            checked={selected}
-                            onChange={(e) => toggleRun(run.run_id, e.target.checked)}
-                            style={{ width: '100%' }}
-                          >
-                            <Space direction="vertical" size={2} style={{ width: '100%' }}>
-                              <Space>
-                                {getProviderTag(run.provider)}
-                                <Text strong style={{ fontSize: 13 }}>{run.model_id}</Text>
-                              </Space>
-                              <Row gutter={12}>
-                                <Col>
-                                  <Text type="secondary" style={{ fontSize: 11 }}>
-                                    ✅ {run.success_count} / {run.total_files} 筆
-                                  </Text>
-                                </Col>
-                                <Col>
-                                  <Text type="secondary" style={{ fontSize: 11 }}>
-                                    🕒 {dayjs(run.started_at).format('MM-DD HH:mm')}
-                                  </Text>
-                                </Col>
-                              </Row>
-                              {run.prompt_preview && (
-                                <Text type="secondary" style={{ fontSize: 10, color: '#9ca3af', display: 'block' }}>
-                                  📝 {run.prompt_preview.slice(0, 50)}{run.prompt_preview.length > 50 ? '…' : ''}
-                                </Text>
-                              )}
-                              <Text type="secondary" style={{ fontSize: 10, color: '#bfbfbf' }}>
-                                run: {run.run_id.slice(0, 8)}
-                              </Text>
-                            </Space>
-                          </Checkbox>
-                        </Card>
-                      </Col>
-                    )
-                  })}
-                </Row>
-              </>
-            )}
-          </div>
-
-          {/* ── 開始分析按鈕 ── */}
+      {/* ── 開始分析按鈕 ── */}
+      <Row justify="end">
+        <Col>
           <Button
             type="primary"
             onClick={handleAnalyze}
             loading={analyzing}
             icon={<BarChartOutlined />}
             size="large"
-            block
             disabled={selectedRunIds.length === 0}
+            style={{ minWidth: 160, background: '#00873e', borderColor: '#00873e' }}
           >
-            {analyzing ? '分析中...' : '🔍 開始分析'}
+            {analyzing ? '分析中...' : '開始分析'}
           </Button>
+        </Col>
+      </Row>
 
-          {analyzing && (
-            <div style={{ textAlign: 'center', padding: '40px 0' }}>
-              <Spin size="large" tip="正在從 BigQuery 取得資料並計算準確度..." />
-            </div>
-          )}
+      {analyzing && (
+        <div style={{ textAlign: 'center', padding: '48px 0' }}>
+          <Spin size="large" tip="正在從 BigQuery 取得資料並計算準確度..." />
+        </div>
+      )}
 
-          {/* ── 分析結果 ── */}
-          {result && !analyzing && (
-            <>
-              {overallStats && (
-                <>
-                  <Divider orientation="left">📈 整體準確度統計</Divider>
-                  <Alert
-                    message={`分析了 ${result.total_records} 筆記錄`}
-                    description={
-                      <Row gutter={16} style={{ marginTop: 16 }}>
-                        {result.model_names.map((modelId: string) => (
-                          <Col span={12} key={modelId}>
-                            <Card size="small" style={{ marginBottom: 16 }}>
-                              <h4 style={{ color: '#00873e', marginBottom: 12 }}>
-                                {result.model_display_names[modelId] || modelId}
-                              </h4>
-                              <Row gutter={16}>
-                                <Col span={12}>
-                                  <Statistic
-                                    title="平均完全一致率"
-                                    value={overallStats[modelId].avgExactMatch}
-                                    suffix="%"
-                                    valueStyle={{ color: '#3f8600', fontSize: 24 }}
-                                    prefix={<CheckCircleOutlined />}
-                                  />
-                                </Col>
-                                <Col span={12}>
-                                  <Statistic
-                                    title="平均相似度"
-                                    value={overallStats[modelId].avgSimilarity}
-                                    suffix="%"
-                                    valueStyle={{ fontSize: 24 }}
-                                    prefix={<CheckCircleOutlined />}
-                                  />
-                                </Col>
-                              </Row>
-                            </Card>
-                          </Col>
-                        ))}
+      {/* ── 分析結果 ── */}
+      {result && !analyzing && (
+        <Space direction="vertical" style={{ width: '100%' }} size="large">
+
+          {/* 整體統計 */}
+          {overallStats && (
+            <Card title={<Space><CheckCircleOutlined style={{ color: '#00873e' }} /><span>整體準確度統計</span><Text type="secondary" style={{ fontSize: 13 }}>（共 {result.total_records} 筆記錄）</Text></Space>}>
+              <Row gutter={[16, 16]}>
+                {result.model_names.map((modelId: string) => (
+                  <Col xs={24} sm={12} key={modelId}>
+                    <Card size="small" style={{ background: '#f6ffed', border: '1px solid #b7eb8f' }}>
+                      <Text strong style={{ fontSize: 14, color: '#00873e', display: 'block', marginBottom: 12 }}>
+                        {result.model_display_names[modelId] || modelId}
+                      </Text>
+                      <Row gutter={16}>
+                        <Col span={12}>
+                          <Statistic
+                            title="平均完全一致率"
+                            value={overallStats[modelId].avgExactMatch}
+                            suffix="%"
+                            valueStyle={{ color: '#3f8600', fontSize: 28 }}
+                            prefix={<CheckCircleOutlined />}
+                          />
+                        </Col>
+                        <Col span={12}>
+                          <Statistic
+                            title="平均相似度"
+                            value={overallStats[modelId].avgSimilarity}
+                            suffix="%"
+                            valueStyle={{ fontSize: 28 }}
+                          />
+                        </Col>
                       </Row>
-                    }
-                    type="info"
-                  />
-                </>
-              )}
-
-              <Card title="各欄位準確度比較（完全一致率）" size="small" style={{ marginTop: 24 }}>
-                <ResponsiveContainer width="100%" height={400}>
-                  <BarChart data={chartData}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="field" />
-                    <YAxis
-                      label={{ value: '完全一致率 (%)', angle: -90, position: 'insideLeft' }}
-                      domain={[0, 100]}
-                    />
-                    <Tooltip formatter={(value: any) => `${value}%`} />
-                    <Legend />
-                    {result.model_names.map((modelId: string, index: number) => (
-                      <Bar
-                        key={modelId}
-                        dataKey={modelId}
-                        fill={colors[index % colors.length]}
-                        name={result.model_display_names[modelId] || modelId}
-                      />
-                    ))}
-                  </BarChart>
-                </ResponsiveContainer>
-              </Card>
-
-              <Card title="詳細準確度數據" size="small" style={{ marginTop: 24 }}>
-                <Alert
-                  message="說明"
-                  description={
-                    <ul style={{ marginBottom: 0, paddingLeft: 20 }}>
-                      <li>完全一致率：與 Ground Truth 完全相同的比例</li>
-                      <li>平均相似度：使用 Jaccard 相似度算法計算</li>
-                      <li>綠色 (≥80%)、橙色 (60–80%)、紅色 (&lt;60%)</li>
-                    </ul>
-                  }
-                  type="info"
-                  showIcon
-                  style={{ marginBottom: 16 }}
-                />
-                <Table
-                  columns={tableColumns}
-                  dataSource={tableData}
-                  pagination={false}
-                  scroll={{ x: 'max-content' }}
-                  size="small"
-                  bordered
-                />
-              </Card>
-            </>
+                    </Card>
+                  </Col>
+                ))}
+              </Row>
+            </Card>
           )}
+
+          {/* 長條圖 */}
+          <Card title="各欄位準確度比較（完全一致率）">
+            <ResponsiveContainer width="100%" height={380}>
+              <BarChart data={chartData} margin={{ top: 8, right: 24, left: 8, bottom: 8 }}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="field" tick={{ fontSize: 13 }} />
+                <YAxis
+                  label={{ value: '完全一致率 (%)', angle: -90, position: 'insideLeft', style: { fontSize: 12 } }}
+                  domain={[0, 100]}
+                  tick={{ fontSize: 12 }}
+                />
+                <Tooltip formatter={(value: any) => `${value}%`} />
+                <Legend wrapperStyle={{ fontSize: 13 }} />
+                {result.model_names.map((modelId: string, index: number) => (
+                  <Bar
+                    key={modelId}
+                    dataKey={modelId}
+                    fill={colors[index % colors.length]}
+                    name={result.model_display_names[modelId] || modelId}
+                    radius={[3, 3, 0, 0]}
+                  />
+                ))}
+              </BarChart>
+            </ResponsiveContainer>
+          </Card>
+
+          {/* 詳細數據表 */}
+          <Card
+            title="詳細準確度數據"
+            extra={
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                綠色 ≥80%　橙色 60–80%　紅色 &lt;60%　｜　Jaccard 相似度
+              </Text>
+            }
+          >
+            <Table
+              columns={tableColumns}
+              dataSource={tableData}
+              pagination={false}
+              scroll={{ x: 'max-content' }}
+              size="middle"
+              bordered
+            />
+          </Card>
         </Space>
-      </Card>
-    </div>
+      )}
+    </Space>
   )
 }
 

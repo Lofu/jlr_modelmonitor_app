@@ -6,12 +6,12 @@ import {
 } from 'antd'
 import {
   DeleteOutlined, ReloadOutlined, EyeOutlined,
-  DatabaseOutlined, ClearOutlined, WarningOutlined, TableOutlined, ExpandAltOutlined,
+  DatabaseOutlined, ClearOutlined, TableOutlined, ExpandAltOutlined,
 } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import {
   listBQRuns, getBQStatus, deleteBQRuns, clearGroundTruth,
-  getRunExtractions, getAllExtractions, type BQRun, type BQStatus,
+  getRunExtractions, getAllExtractions, getGroundTruthRows, type BQRun, type BQStatus,
 } from '../services/api'
 import dayjs from 'dayjs'
 
@@ -373,12 +373,28 @@ const RunsTab = ({ onRunsChange }: { onRunsChange: () => void }) => {
 // ============================================================================
 const GroundTruthTab = ({ onChange }: { onChange: () => void }) => {
   const [clearing, setClearing] = useState(false)
+  const [rows, setRows] = useState<any[]>([])
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => { loadRows() }, [])
+
+  const loadRows = async () => {
+    try {
+      setLoading(true)
+      setRows(await getGroundTruthRows())
+    } catch {
+      message.error('載入 Ground Truth 失敗')
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const handleClear = async () => {
     try {
       setClearing(true)
       await clearGroundTruth()
       message.success('Ground Truth 已清空')
+      setRows([])
       onChange()
     } catch (err: any) {
       message.error(err.message || '清空失敗')
@@ -387,44 +403,53 @@ const GroundTruthTab = ({ onChange }: { onChange: () => void }) => {
     }
   }
 
+  // 動態產生欄位（依 BQ schema 實際欄位）
+  const columns: ColumnsType<any> = rows.length === 0 ? [] : Object.keys(rows[0]).map(key => ({
+    title: key,
+    dataIndex: key,
+    key,
+    ellipsis: true,
+    width: key === 'file_name' ? 200 : 160,
+  }))
+
   return (
     <Space direction="vertical" style={{ width: '100%' }} size="middle">
-      <Alert
-        message="Ground Truth 是準確度分析的基準資料"
-        description="若要更新 Ground Truth，請至「檔案管理」頁面重新上傳 CSV。此處僅提供清空操作。"
-        type="info"
-        showIcon
-      />
-      <Card size="small">
-        <Row align="middle" justify="space-between">
-          <Col>
-            <Space>
-              <WarningOutlined style={{ color: '#fa8c16', fontSize: 18 }} />
-              <div>
-                <Text strong>清空 Ground Truth 表格</Text>
-                <br />
-                <Text type="secondary" style={{ fontSize: 12 }}>
-                  刪除 BigQuery 中 ground_truth 表的所有資料，準確度分析將無法執行。
-                </Text>
-              </div>
-            </Space>
-          </Col>
-          <Col>
+      <Row justify="space-between" align="middle">
+        <Col>
+          <Alert
+            message="Ground Truth 是準確度分析的基準資料，若要更新請至「檔案管理」重新上傳 CSV。"
+            type="info" showIcon
+          />
+        </Col>
+        <Col style={{ marginLeft: 12 }}>
+          <Space>
+            <Button icon={<ReloadOutlined />} onClick={loadRows} loading={loading}>重新整理</Button>
             <Popconfirm
               title="確定清空 Ground Truth？"
               description="此操作將刪除所有基準資料，無法復原。"
-              okText="確定清空"
-              okButtonProps={{ danger: true }}
-              cancelText="取消"
+              okText="確定清空" okButtonProps={{ danger: true }} cancelText="取消"
               onConfirm={handleClear}
             >
-              <Button danger icon={<ClearOutlined />} loading={clearing}>
-                清空 Ground Truth
-              </Button>
+              <Button danger icon={<ClearOutlined />} loading={clearing}>清空</Button>
             </Popconfirm>
-          </Col>
-        </Row>
-      </Card>
+          </Space>
+        </Col>
+      </Row>
+
+      <Table
+        columns={columns}
+        dataSource={rows}
+        rowKey={(_, i) => String(i)}
+        loading={loading}
+        size="small"
+        scroll={{ x: 900 }}
+        pagination={{
+          pageSize: 10,
+          showSizeChanger: true,
+          pageSizeOptions: ['10', '20', '50'],
+          showTotal: (n) => `共 ${n} 筆`,
+        }}
+      />
     </Space>
   )
 }

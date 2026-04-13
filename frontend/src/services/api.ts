@@ -205,6 +205,11 @@ export const deleteBQRuns = (runIds: string[]): Promise<any> => {
   return api.delete('/api/bq/runs', { data: { run_ids: runIds } })
 }
 
+// 查詢 ground_truth 表資料
+export const getGroundTruthRows = (): Promise<any[]> => {
+  return api.get('/api/bq/ground-truth')
+}
+
 // 清空 ground_truth 表
 export const clearGroundTruth = (): Promise<any> => {
   return api.delete('/api/bq/ground-truth')
