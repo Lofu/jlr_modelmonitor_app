@@ -168,13 +168,30 @@ const RunsTab = ({ onRunsChange }: { onRunsChange: () => void }) => {
     },
   ]
 
-  // 萃取明細欄位
+  // 萃取明細欄位（對應 BQ extractions schema 全欄位）
   const extractionCols: ColumnsType<any> = [
-    { title: '檔案', dataIndex: 'file_name', key: 'file_name', width: 200, ellipsis: true },
-    { title: 'NAME', dataIndex: 'NAME', key: 'NAME', width: 130 },
-    { title: 'SEX', dataIndex: 'SEX', key: 'SEX', width: 60 },
-    { title: 'DATE_OF_BIRTH', dataIndex: 'DATE_OF_BIRTH', key: 'dob', width: 120 },
-    { title: 'PLACE_OF_BIRTH', dataIndex: 'PLACE_OF_BIRTH', key: 'pob', ellipsis: true },
+    { title: 'run_id',        dataIndex: 'run_id',        key: 'run_id',        width: 100, ellipsis: true,
+      render: (v: string) => <Text type="secondary" style={{ fontSize: 10 }}>{v}</Text> },
+    { title: 'model_id',      dataIndex: 'model_id',      key: 'model_id',      width: 180, ellipsis: true },
+    { title: 'prompt_hash',   dataIndex: 'prompt_hash',   key: 'prompt_hash',   width: 100,
+      render: (v: string) => <Text code style={{ fontSize: 10 }}>{v}</Text> },
+    { title: 'extracted_at',  dataIndex: 'extracted_at',  key: 'extracted_at',  width: 150,
+      render: (t: string) => t ? dayjs(t).format('YYYY-MM-DD HH:mm') : '-' },
+    { title: 'doc_id',        dataIndex: 'doc_id',        key: 'doc_id',        width: 160, ellipsis: true },
+    { title: 'file_name',     dataIndex: 'file_name',     key: 'file_name',     width: 180, ellipsis: true },
+    { title: 'case_link',     dataIndex: 'case_link',     key: 'case_link',     width: 80,
+      render: (v: string) => v ? <a href={v} target="_blank" rel="noreferrer">連結</a> : '-' },
+    { title: 'NAME',          dataIndex: 'NAME',          key: 'NAME',          width: 130 },
+    { title: 'SEX',           dataIndex: 'SEX',           key: 'SEX',           width: 55 },
+    { title: 'DATE_OF_BIRTH', dataIndex: 'DATE_OF_BIRTH', key: 'dob',           width: 120 },
+    { title: 'PLACE_OF_BIRTH',dataIndex: 'PLACE_OF_BIRTH',key: 'pob',           width: 160, ellipsis: true },
+    { title: 'raw_json',      dataIndex: 'raw_json',      key: 'raw_json',      width: 80,
+      render: (v: string) => v
+        ? <Text
+            style={{ fontSize: 10, cursor: 'pointer', color: '#00873e' }}
+            title={v}
+          >查看</Text>
+        : '-' },
   ]
 
   return (
@@ -279,11 +296,11 @@ const RunsTab = ({ onRunsChange }: { onRunsChange: () => void }) => {
               title={() => <Text strong>萃取明細（{extractions.length} 筆）</Text>}
               columns={extractionCols}
               dataSource={extractions}
-              rowKey="file_name"
+              rowKey={(r, i) => `${r.run_id}-${r.doc_id}-${i}`}
               loading={extractLoading}
               size="small"
-              scroll={{ x: 700 }}
-              pagination={{ pageSize: 20, showTotal: (n) => `共 ${n} 筆` }}
+              scroll={{ x: 1400 }}
+              pagination={{ pageSize: 10, showSizeChanger: true, pageSizeOptions: ['10', '20', '50'], showTotal: (n) => `共 ${n} 筆` }}
             />
           </Space>
         )}
@@ -394,35 +411,60 @@ const ExtractionsTab = ({ totalRows }: { totalRows: number }) => {
 
   const columns: ColumnsType<any> = [
     {
-      title: 'Model',
-      dataIndex: 'model_id',
-      key: 'model_id',
-      width: 220,
-      render: (m: string) => <ProviderTag provider={m?.includes('gemini') ? 'gemini' : m?.includes('claude') ? 'claude' : ''} />,
+      title: 'run_id',
+      dataIndex: 'run_id',
+      key: 'run_id',
+      width: 100,
+      ellipsis: true,
+      render: (v: string) => <Text type="secondary" style={{ fontSize: 10 }}>{v}</Text>,
     },
     {
-      title: '檔案 / Doc ID',
-      dataIndex: 'doc_id',
-      key: 'doc_id',
+      title: 'model_id',
+      dataIndex: 'model_id',
+      key: 'model_id',
       width: 200,
-      ellipsis: true,
-      render: (id: string, r: any) => (
-        <Space direction="vertical" size={0}>
-          <Text style={{ fontSize: 12 }}>{r.file_name || id}</Text>
-          <Text type="secondary" style={{ fontSize: 10 }}>{id}</Text>
+      render: (m: string) => (
+        <Space size={4}>
+          <ProviderTag provider={m?.toLowerCase().includes('gemini') ? 'gemini' : m?.toLowerCase().includes('claude') ? 'claude' : ''} />
+          <Text style={{ fontSize: 12 }}>{m}</Text>
         </Space>
       ),
     },
-    { title: 'NAME', dataIndex: 'NAME', key: 'NAME', width: 130 },
-    { title: 'SEX', dataIndex: 'SEX', key: 'SEX', width: 55 },
-    { title: 'DATE_OF_BIRTH', dataIndex: 'DATE_OF_BIRTH', key: 'dob', width: 120 },
-    { title: 'PLACE_OF_BIRTH', dataIndex: 'PLACE_OF_BIRTH', key: 'pob', ellipsis: true },
     {
-      title: '萃取時間',
+      title: 'prompt_hash',
+      dataIndex: 'prompt_hash',
+      key: 'prompt_hash',
+      width: 100,
+      render: (v: string) => <Text code style={{ fontSize: 10 }}>{v}</Text>,
+    },
+    {
+      title: 'extracted_at',
       dataIndex: 'extracted_at',
       key: 'extracted_at',
       width: 150,
       render: (t: string) => t ? dayjs(t).format('YYYY-MM-DD HH:mm') : '-',
+    },
+    { title: 'doc_id',        dataIndex: 'doc_id',        key: 'doc_id',        width: 160, ellipsis: true },
+    { title: 'file_name',     dataIndex: 'file_name',     key: 'file_name',     width: 180, ellipsis: true },
+    {
+      title: 'case_link',
+      dataIndex: 'case_link',
+      key: 'case_link',
+      width: 80,
+      render: (v: string) => v ? <a href={v} target="_blank" rel="noreferrer">連結</a> : '-',
+    },
+    { title: 'NAME',          dataIndex: 'NAME',          key: 'NAME',          width: 130 },
+    { title: 'SEX',           dataIndex: 'SEX',           key: 'SEX',           width: 55 },
+    { title: 'DATE_OF_BIRTH', dataIndex: 'DATE_OF_BIRTH', key: 'dob',           width: 120 },
+    { title: 'PLACE_OF_BIRTH',dataIndex: 'PLACE_OF_BIRTH',key: 'pob',           width: 160, ellipsis: true },
+    {
+      title: 'raw_json',
+      dataIndex: 'raw_json',
+      key: 'raw_json',
+      width: 80,
+      render: (v: string) => v
+        ? <Text style={{ fontSize: 10, color: '#00873e', cursor: 'pointer' }} title={v}>查看</Text>
+        : '-',
     },
   ]
 
@@ -466,11 +508,11 @@ const ExtractionsTab = ({ totalRows }: { totalRows: number }) => {
         rowKey={(r, i) => `${r.run_id}-${r.doc_id}-${i}`}
         loading={loading}
         size="small"
-        scroll={{ x: 900 }}
+        scroll={{ x: 1400 }}
         pagination={{
-          pageSize: 20,
+          pageSize: 10,
           showSizeChanger: true,
-          pageSizeOptions: ['20', '50', '100'],
+          pageSizeOptions: ['10', '20', '50'],
           showTotal: (n) => `共 ${n} 筆`,
         }}
       />

@@ -232,14 +232,16 @@ class BQClient:
         self._append_rows(BQ_TABLE_EXTRACTIONS, rows)
 
     def get_extractions_by_runs(self, run_ids: List[str]) -> pd.DataFrame:
-        """查詢指定 run_id 的萃取結果（含 model_id）"""
+        """查詢指定 run_id 的萃取結果（全欄位）"""
         if not run_ids:
             return pd.DataFrame()
         ids_str = ", ".join(f"'{r}'" for r in run_ids)
         query = f"""
-        SELECT run_id, model_id, prompt_hash, doc_id, file_name, case_link,
+        SELECT run_id, model_id, prompt_hash,
+               FORMAT_TIMESTAMP('%Y-%m-%dT%H:%M:%SZ', extracted_at) AS extracted_at,
+               doc_id, file_name, case_link,
                NAME, SEX, DATE_OF_BIRTH, PLACE_OF_BIRTH,
-               FORMAT_TIMESTAMP('%Y-%m-%dT%H:%M:%SZ', extracted_at) AS extracted_at
+               raw_json
         FROM `{self.dataset_ref}.{BQ_TABLE_EXTRACTIONS}`
         WHERE run_id IN ({ids_str})
         ORDER BY extracted_at DESC
@@ -247,11 +249,13 @@ class BQClient:
         return self.client.query(query).to_dataframe()
 
     def get_all_extractions(self, limit: int = 1000) -> pd.DataFrame:
-        """查詢 extractions 表所有資料（最新 limit 筆）"""
+        """查詢 extractions 表所有資料（全欄位，最新 limit 筆）"""
         query = f"""
-        SELECT run_id, model_id, doc_id, file_name,
+        SELECT run_id, model_id, prompt_hash,
+               FORMAT_TIMESTAMP('%Y-%m-%dT%H:%M:%SZ', extracted_at) AS extracted_at,
+               doc_id, file_name, case_link,
                NAME, SEX, DATE_OF_BIRTH, PLACE_OF_BIRTH,
-               FORMAT_TIMESTAMP('%Y-%m-%dT%H:%M:%SZ', extracted_at) AS extracted_at
+               raw_json
         FROM `{self.dataset_ref}.{BQ_TABLE_EXTRACTIONS}`
         ORDER BY extracted_at DESC
         LIMIT {limit}
@@ -323,10 +327,18 @@ class BQClient:
             m = re.match(r"(.+?)_extract_v[\d.]+\.csv$", csv_path.name)
             model_id = m.group(1) if m else csv_path.stem
 
+        # 支援兩種欄位命名：含 _NEW_EXTRACT 後綴（新格式）或不含（舊格式）
+        def col(row, *names):
+            for n in names:
+                v = row.get(n)
+                if v is not None and str(v).strip() not in ("", "nan", "None"):
+                    return str(v).strip()
+            return ""
+
         defendants = []
         for _, row in df.iterrows():
-            doc_id = str(row.get("DOC_ID", "") or "")
-            case_link = str(row.get("CASE_LINK", "") or "")
+            doc_id = col(row, "DOC_ID", "DEFENDANT_ID")
+            case_link = col(row, "CASE_LINK")
             # 若 doc_id 空則從 case_link 解析
             if not doc_id and case_link:
                 import re
@@ -336,10 +348,10 @@ class BQClient:
             defendants.append({
                 "DOC_ID":         doc_id,
                 "CASE_LINK":      case_link,
-                "NAME":           str(row.get("NAME", "") or ""),
-                "SEX":            str(row.get("SEX", "") or ""),
-                "DATE_OF_BIRTH":  str(row.get("DATE_OF_BIRTH", "") or ""),
-                "PLACE_OF_BIRTH": str(row.get("PLACE_OF_BIRTH", "") or ""),
+                "NAME":           col(row, "NAME", "NAME_NEW_EXTRACT"),
+                "SEX":            col(row, "SEX", "SEX_NEW_EXTRACT"),
+                "DATE_OF_BIRTH":  col(row, "DATE_OF_BIRTH", "DATE_OF_BIRTH_NEW_EXTRACT"),
+                "PLACE_OF_BIRTH": col(row, "PLACE_OF_BIRTH", "PLACE_OF_BIRTH_NEW_EXTRACT"),
             })
 
         run_id = self.make_run_id()

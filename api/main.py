@@ -672,7 +672,10 @@ async def get_run_extractions(run_id: str):
     df = await asyncio.to_thread(bq.get_extractions_by_runs, [run_id])
     if df.empty:
         return []
-    cols = [c for c in ["doc_id", "file_name", "NAME", "SEX", "DATE_OF_BIRTH", "PLACE_OF_BIRTH", "extracted_at"] if c in df.columns]
+    ALL_EXTRACT_COLS = ["run_id", "model_id", "prompt_hash", "extracted_at",
+                        "doc_id", "file_name", "case_link",
+                        "NAME", "SEX", "DATE_OF_BIRTH", "PLACE_OF_BIRTH", "raw_json"]
+    cols = [c for c in ALL_EXTRACT_COLS if c in df.columns]
     return df[cols].fillna("").to_dict(orient="records")
 
 @app.get("/api/bq/extractions")
@@ -683,7 +686,10 @@ async def get_all_extractions(limit: int = 1000):
         df = await asyncio.to_thread(bq.get_all_extractions, limit)
         if df.empty:
             return []
-        cols = [c for c in ["run_id", "model_id", "doc_id", "file_name", "NAME", "SEX", "DATE_OF_BIRTH", "PLACE_OF_BIRTH", "extracted_at"] if c in df.columns]
+        ALL_EXTRACT_COLS = ["run_id", "model_id", "prompt_hash", "extracted_at",
+                            "doc_id", "file_name", "case_link",
+                            "NAME", "SEX", "DATE_OF_BIRTH", "PLACE_OF_BIRTH", "raw_json"]
+        cols = [c for c in ALL_EXTRACT_COLS if c in df.columns]
         return df[cols].fillna("").to_dict(orient="records")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
