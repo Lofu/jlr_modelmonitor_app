@@ -13,6 +13,7 @@ import {
   Checkbox,
   Typography,
   Tag,
+  Select,
 } from 'antd'
 import {
   BarChartOutlined,
@@ -20,7 +21,10 @@ import {
   ReloadOutlined,
 } from '@ant-design/icons'
 
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as ReTooltip,
+  Legend, ResponsiveContainer, Cell, LabelList,
+} from 'recharts'
 import { listBQRuns, analyzeAccuracyBQ, type BQRun } from '../services/api'
 import dayjs from 'dayjs'
 
@@ -39,6 +43,7 @@ const AnalyzePage = () => {
   const [loading, setLoading] = useState(false)
   const [analyzing, setAnalyzing] = useState(false)
   const [result, setResult] = useState<any>(null)
+  const [selectedField, setSelectedField] = useState<string>('PLACE_OF_BIRTH')
 
   useEffect(() => {
     loadRuns()
@@ -334,7 +339,7 @@ const AnalyzePage = () => {
                   domain={[0, 100]}
                   tick={{ fontSize: 12 }}
                 />
-                <Tooltip formatter={(value: any) => `${value}%`} />
+                <ReTooltip formatter={(value: any) => `${value}%`} />
                 <Legend wrapperStyle={{ fontSize: 13 }} />
                 {result.model_names.map((modelId: string, index: number) => (
                   <Bar
@@ -367,6 +372,129 @@ const AnalyzePage = () => {
               bordered
             />
           </Card>
+
+          {/* ── 圖表一：指定欄位平均相似度 ── */}
+          {(() => {
+            const fieldOptions = [
+              { value: 'NAME', label: '姓名 (NAME)' },
+              { value: 'SEX', label: '性別 (SEX)' },
+              { value: 'DATE_OF_BIRTH', label: '生日 (DATE_OF_BIRTH)' },
+              { value: 'PLACE_OF_BIRTH', label: '出生地 (PLACE_OF_BIRTH)' },
+            ]
+            const fieldData = result.accuracy_summary
+              .filter((r: any) => r['欄位'] === selectedField)
+              .map((r: any) => ({
+                model: result.model_display_names[r['模型']] || r['模型'],
+                平均相似度: parseFloat((r['平均相似度'] * 100).toFixed(2)),
+                完全一致率: parseFloat((r['完全一致率'] * 100).toFixed(2)),
+                中位數相似度: parseFloat((r['中位數相似度'] * 100).toFixed(2)),
+                完全一致數: r['完全一致數'],
+                完全不一致數: r['完全不一致數'],
+                總筆數: r['總筆數'],
+              }))
+              .sort((a: any, b: any) => b['平均相似度'] - a['平均相似度'])
+
+            const COLORS = ['#66BB6A', '#FFB74D', '#64B5F6', '#F06292', '#BA68C8', '#4DB6AC', '#FF8A65']
+
+            const rankCols = [
+              { title: '排名', key: 'rank', width: 60, render: (_: any, __: any, i: number) => <Text strong>{i + 1}</Text> },
+              { title: '模型', dataIndex: 'model', key: 'model', render: (v: string) => <Text strong>{v}</Text> },
+              { title: '平均相似度', dataIndex: '平均相似度', key: 'sim', width: 120,
+                render: (v: number) => <Text style={{ color: v >= 80 ? '#3f8600' : v >= 60 ? '#fa8c16' : '#cf1322', fontWeight: 600 }}>{v.toFixed(2)}%</Text> },
+              { title: '中位數相似度', dataIndex: '中位數相似度', key: 'med', width: 120,
+                render: (v: number) => `${v.toFixed(2)}%` },
+              { title: '完全一致率', dataIndex: '完全一致率', key: 'exact', width: 110,
+                render: (v: number) => `${v.toFixed(2)}%` },
+              { title: '完全一致數', dataIndex: '完全一致數', key: 'exactN', width: 100 },
+              { title: '完全不一致數', dataIndex: '完全不一致數', key: 'noneN', width: 110 },
+              { title: '總筆數', dataIndex: '總筆數', key: 'total', width: 80 },
+            ]
+
+            return (
+              <Card
+                title="欄位平均相似度排名"
+                extra={
+                  <Select
+                    value={selectedField}
+                    onChange={setSelectedField}
+                    options={fieldOptions}
+                    style={{ width: 200 }}
+                    size="small"
+                  />
+                }
+              >
+                <ResponsiveContainer width="100%" height={360}>
+                  <BarChart data={fieldData} margin={{ top: 24, right: 24, left: 8, bottom: 8 }}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="model" tick={{ fontSize: 12 }} />
+                    <YAxis domain={[0, 100]} tickFormatter={(v) => `${v}%`} tick={{ fontSize: 12 }} />
+                    <ReTooltip formatter={(v: any, name: string) => [`${v}%`, name]} />
+                    <Legend wrapperStyle={{ fontSize: 13 }} />
+                    <Bar dataKey="平均相似度" radius={[4, 4, 0, 0]} name="平均相似度">
+                      {fieldData.map((_: any, i: number) => (
+                        <Cell key={i} fill={COLORS[i % COLORS.length]} />
+                      ))}
+                      <LabelList dataKey="平均相似度" position="top" formatter={(v: any) => `${v}%`} style={{ fontSize: 12, fontWeight: 600 }} />
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+                <Table
+                  columns={rankCols}
+                  dataSource={fieldData}
+                  rowKey="model"
+                  size="small"
+                  pagination={false}
+                  style={{ marginTop: 16 }}
+                />
+              </Card>
+            )
+          })()}
+
+          {/* ── 圖表二：萃取完整度（成功筆數 vs 總筆數）── */}
+          {(() => {
+            const counts = result.model_extraction_counts || {}
+            const total = result.total_records
+            const COLORS = ['#66BB6A', '#FFB74D', '#64B5F6', '#F06292', '#BA68C8', '#4DB6AC', '#FF8A65']
+
+            const extractData = result.model_names.map((norm: string, i: number) => {
+              const display = result.model_display_names[norm] || norm
+              const valid = counts[norm] ?? 0
+              const missing = Math.max(0, total - valid)
+              return { model: display, 成功萃取: valid, 未萃取: missing, _color: COLORS[i % COLORS.length] }
+            }).sort((a: any, b: any) => b['成功萃取'] - a['成功萃取'])
+
+            return (
+              <Card title={`萃取完整度比較（Ground Truth 總筆數：${total}）`}>
+                <ResponsiveContainer width="100%" height={380}>
+                  <BarChart data={extractData} margin={{ top: 24, right: 24, left: 8, bottom: 8 }}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="model" tick={{ fontSize: 12 }} />
+                    <YAxis domain={[0, Math.ceil(total * 1.1)]} tick={{ fontSize: 12 }} />
+                    <ReTooltip
+                      formatter={(v: any, name: string) => [
+                        name === '成功萃取' ? `${v} 筆 (${(v / total * 100).toFixed(1)}%)` : `${v} 筆`,
+                        name,
+                      ]}
+                    />
+                    <Legend wrapperStyle={{ fontSize: 13 }} />
+                    <Bar dataKey="未萃取" stackId="a" fill="#e8e8e8" name="未萃取（缺少對應）" radius={[0, 0, 0, 0]} />
+                    <Bar dataKey="成功萃取" stackId="a" radius={[4, 4, 0, 0]} name="成功萃取">
+                      {extractData.map((d: any, i: number) => (
+                        <Cell key={i} fill={d._color} />
+                      ))}
+                      <LabelList
+                        dataKey="成功萃取"
+                        position="inside"
+                        formatter={(v: any) => `${v}\n(${(v / total * 100).toFixed(1)}%)`}
+                        style={{ fontSize: 12, fill: '#fff', fontWeight: 600 }}
+                      />
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </Card>
+            )
+          })()}
+
         </Space>
       )}
     </Space>

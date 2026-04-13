@@ -726,6 +726,7 @@ async def analyze_accuracy_bq(request: BQAnalyzeRequest):
 
         model_dfs = {}
         model_display_names = {}
+        model_extraction_counts = {}  # 各模型原始萃取筆數
 
         # 統計每個 model_id 出現的 run 數，超過 1 個時加 run_id 前 8 碼區分
         run_model = extractions_df[["run_id", "model_id"]].drop_duplicates()
@@ -740,6 +741,7 @@ async def analyze_accuracy_bq(request: BQAnalyzeRequest):
             df = subset[["file_name", "NAME", "SEX", "DATE_OF_BIRTH", "PLACE_OF_BIRTH", "case_link"]].copy()
             df = df.rename(columns={"case_link": "CASE_LINK"})
 
+            model_extraction_counts[label] = len(df)  # 記錄原始萃取數
             loaded = analyzer.load_model_result(df, label)
             norm_id = analyzer._normalize_model_name(label)
             model_dfs[norm_id] = loaded
@@ -753,10 +755,17 @@ async def analyze_accuracy_bq(request: BQAnalyzeRequest):
         name_accuracy_df = analyzer.calculate_name_accuracy(merged_df, list(model_dfs.keys()))
         full_accuracy_df = pd.concat([name_accuracy_df, accuracy_df], axis=0).reset_index(drop=True)
 
+        # 對應 norm_id → extraction count
+        model_extraction_counts_norm = {
+            analyzer._normalize_model_name(label): count
+            for label, count in model_extraction_counts.items()
+        }
+
         return {
             "success": True,
             "model_names": list(model_dfs.keys()),
             "model_display_names": model_display_names,
+            "model_extraction_counts": model_extraction_counts_norm,
             "accuracy_summary": full_accuracy_df.to_dict(orient="records"),
             "field_list": ["NAME", "SEX", "DATE_OF_BIRTH", "DATE_OF_BIRTH_YEAR", "PLACE_OF_BIRTH"],
             "total_records": len(merged_df),
