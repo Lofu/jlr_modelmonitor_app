@@ -2,11 +2,11 @@ import { useState, useEffect } from 'react'
 import {
   Card, Table, Button, Space, Popconfirm, message, Tag,
   Typography, Tabs, Row, Col, Statistic, Drawer, Alert,
-  Badge, Select, Input, Tooltip,
+  Badge, Select, Input, Tooltip, Modal,
 } from 'antd'
 import {
   DeleteOutlined, ReloadOutlined, EyeOutlined,
-  DatabaseOutlined, ClearOutlined, WarningOutlined, TableOutlined,
+  DatabaseOutlined, ClearOutlined, WarningOutlined, TableOutlined, ExpandAltOutlined,
 } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import {
@@ -39,6 +39,7 @@ const RunsTab = ({ onRunsChange }: { onRunsChange: () => void }) => {
   const [drawerRun, setDrawerRun] = useState<BQRun | null>(null)
   const [extractions, setExtractions] = useState<any[]>([])
   const [extractLoading, setExtractLoading] = useState(false)
+  const [promptModalOpen, setPromptModalOpen] = useState(false)
 
   useEffect(() => { loadRuns() }, [])
 
@@ -295,9 +296,22 @@ const RunsTab = ({ onRunsChange }: { onRunsChange: () => void }) => {
                 <Statistic title="總檔案數" value={drawerRun.total_files} />
               </Col>
             </Row>
-            <Card size="small" title="Prompt 預覽">
+            <Card
+              size="small"
+              title="Prompt 預覽"
+              extra={
+                <Button
+                  type="link" size="small" icon={<ExpandAltOutlined />}
+                  onClick={() => setPromptModalOpen(true)}
+                >
+                  查看完整 Prompt
+                </Button>
+              }
+            >
               <Text type="secondary" style={{ fontSize: 12, whiteSpace: 'pre-wrap' }}>
-                {drawerRun.prompt_preview}...
+                {drawerRun.prompt_preview}
+                {drawerRun.prompt_full && drawerRun.prompt_full.length > drawerRun.prompt_preview?.length
+                  ? <Text type="secondary">…</Text> : null}
               </Text>
             </Card>
             <Text type="secondary" style={{ fontSize: 11 }}>Run ID: {drawerRun.run_id}</Text>
@@ -315,6 +329,33 @@ const RunsTab = ({ onRunsChange }: { onRunsChange: () => void }) => {
           </Space>
         )}
       </Drawer>
+
+      {/* 完整 Prompt Modal */}
+      <Modal
+        title={
+          drawerRun && (
+            <Space>
+              <ProviderTag provider={drawerRun.provider} />
+              <span>{drawerRun.model_id} — 完整 Prompt</span>
+            </Space>
+          )
+        }
+        open={promptModalOpen}
+        onCancel={() => setPromptModalOpen(false)}
+        footer={<Button onClick={() => setPromptModalOpen(false)}>關閉</Button>}
+        width={720}
+      >
+        {drawerRun && (
+          <div style={{
+            background: '#f6ffed', border: '1px solid #b7eb8f', borderRadius: 6,
+            padding: '12px 16px', maxHeight: '60vh', overflow: 'auto',
+          }}>
+            <pre style={{ margin: 0, fontSize: 12, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontFamily: 'monospace' }}>
+              {drawerRun.prompt_full || drawerRun.prompt_preview}
+            </pre>
+          </div>
+        )}
+      </Modal>
     </>
   )
 }

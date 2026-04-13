@@ -66,6 +66,7 @@ export interface BQRun {
   provider: string
   prompt_hash: string
   prompt_preview: string
+  prompt_full: string
   started_at: string
   completed_at: string
   total_files: number

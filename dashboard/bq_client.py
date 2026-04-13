@@ -187,7 +187,7 @@ class BQClient:
     def list_runs(self) -> List[dict]:
         """列出所有執行紀錄（最新在前）"""
         query = f"""
-        SELECT run_id, model_id, provider, prompt_hash, prompt_preview,
+        SELECT run_id, model_id, provider, prompt_hash, prompt_preview, prompt_full,
                FORMAT_TIMESTAMP('%Y-%m-%dT%H:%M:%SZ', started_at)   AS started_at,
                FORMAT_TIMESTAMP('%Y-%m-%dT%H:%M:%SZ', completed_at) AS completed_at,
                total_files, success_count, error_count
