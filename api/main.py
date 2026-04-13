@@ -672,7 +672,21 @@ async def get_run_extractions(run_id: str):
     df = await asyncio.to_thread(bq.get_extractions_by_runs, [run_id])
     if df.empty:
         return []
-    return df[["doc_id", "file_name", "NAME", "SEX", "DATE_OF_BIRTH", "PLACE_OF_BIRTH", "extracted_at"]].to_dict(orient="records")
+    cols = [c for c in ["doc_id", "file_name", "NAME", "SEX", "DATE_OF_BIRTH", "PLACE_OF_BIRTH", "extracted_at"] if c in df.columns]
+    return df[cols].fillna("").to_dict(orient="records")
+
+@app.get("/api/bq/extractions")
+async def get_all_extractions(limit: int = 1000):
+    """查詢 extractions 表所有資料"""
+    try:
+        bq = await asyncio.to_thread(_get_bq)
+        df = await asyncio.to_thread(bq.get_all_extractions, limit)
+        if df.empty:
+            return []
+        cols = [c for c in ["run_id", "model_id", "doc_id", "file_name", "NAME", "SEX", "DATE_OF_BIRTH", "PLACE_OF_BIRTH", "extracted_at"] if c in df.columns]
+        return df[cols].fillna("").to_dict(orient="records")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/analyze-bq")
 async def analyze_accuracy_bq(request: BQAnalyzeRequest):

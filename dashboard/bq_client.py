@@ -117,9 +117,10 @@ class BQClient:
             source_format=bigquery.SourceFormat.NEWLINE_DELIMITED_JSON,
             schema=schema or _SCHEMAS.get(table_name),
         )
-        ndjson = "\n".join(json.dumps(r, ensure_ascii=False, default=str) for r in rows)
+        ndjson_bytes = "\n".join(json.dumps(r, ensure_ascii=False, default=str) for r in rows).encode("utf-8")
         job = self.client.load_table_from_file(
-            io.StringIO(ndjson), table_id, job_config=job_config
+            io.BytesIO(ndjson_bytes), table_id, job_config=job_config,
+            num_retries=3,
         )
         job.result()  # 等待完成
 
@@ -133,9 +134,10 @@ class BQClient:
             source_format=bigquery.SourceFormat.NEWLINE_DELIMITED_JSON,
             schema=schema or _SCHEMAS.get(table_name),
         )
-        ndjson = "\n".join(json.dumps(r, ensure_ascii=False, default=str) for r in rows)
+        ndjson_bytes = "\n".join(json.dumps(r, ensure_ascii=False, default=str) for r in rows).encode("utf-8")
         job = self.client.load_table_from_file(
-            io.StringIO(ndjson), table_id, job_config=job_config
+            io.BytesIO(ndjson_bytes), table_id, job_config=job_config,
+            num_retries=3,
         )
         job.result()
 
@@ -236,9 +238,23 @@ class BQClient:
         ids_str = ", ".join(f"'{r}'" for r in run_ids)
         query = f"""
         SELECT run_id, model_id, prompt_hash, doc_id, file_name, case_link,
-               NAME, SEX, DATE_OF_BIRTH, PLACE_OF_BIRTH
+               NAME, SEX, DATE_OF_BIRTH, PLACE_OF_BIRTH,
+               FORMAT_TIMESTAMP('%Y-%m-%dT%H:%M:%SZ', extracted_at) AS extracted_at
         FROM `{self.dataset_ref}.{BQ_TABLE_EXTRACTIONS}`
         WHERE run_id IN ({ids_str})
+        ORDER BY extracted_at DESC
+        """
+        return self.client.query(query).to_dataframe()
+
+    def get_all_extractions(self, limit: int = 1000) -> pd.DataFrame:
+        """查詢 extractions 表所有資料（最新 limit 筆）"""
+        query = f"""
+        SELECT run_id, model_id, doc_id, file_name,
+               NAME, SEX, DATE_OF_BIRTH, PLACE_OF_BIRTH,
+               FORMAT_TIMESTAMP('%Y-%m-%dT%H:%M:%SZ', extracted_at) AS extracted_at
+        FROM `{self.dataset_ref}.{BQ_TABLE_EXTRACTIONS}`
+        ORDER BY extracted_at DESC
+        LIMIT {limit}
         """
         return self.client.query(query).to_dataframe()
 

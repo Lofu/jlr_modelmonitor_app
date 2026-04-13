@@ -214,6 +214,11 @@ export const getRunExtractions = (runId: string): Promise<any[]> => {
   return api.get(`/api/bq/runs/${runId}/extractions`)
 }
 
+// 查詢 extractions 表所有資料
+export const getAllExtractions = (limit = 1000): Promise<any[]> => {
+  return api.get(`/api/bq/extractions?limit=${limit}`)
+}
+
 // WebSocket 連接
 export const createWebSocket = (onMessage: (data: any) => void): WebSocket => {
   const wsUrl = API_BASE_URL.replace('http', 'ws')

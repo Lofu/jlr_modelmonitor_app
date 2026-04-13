@@ -2,16 +2,16 @@ import { useState, useEffect } from 'react'
 import {
   Card, Table, Button, Space, Popconfirm, message, Tag,
   Typography, Tabs, Row, Col, Statistic, Drawer, Alert,
-  Badge,
+  Badge, Select, Input,
 } from 'antd'
 import {
   DeleteOutlined, ReloadOutlined, EyeOutlined,
-  DatabaseOutlined, ClearOutlined, WarningOutlined,
+  DatabaseOutlined, ClearOutlined, WarningOutlined, TableOutlined,
 } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import {
   listBQRuns, getBQStatus, deleteBQRuns, clearGroundTruth,
-  getRunExtractions, type BQRun, type BQStatus,
+  getRunExtractions, getAllExtractions, type BQRun, type BQStatus,
 } from '../services/api'
 import dayjs from 'dayjs'
 
@@ -354,6 +354,131 @@ const GroundTruthTab = ({ onChange }: { onChange: () => void }) => {
 }
 
 // ============================================================================
+// Extractions 瀏覽 Tab
+// ============================================================================
+const ExtractionsTab = ({ totalRows }: { totalRows: number }) => {
+  const [rows, setRows] = useState<any[]>([])
+  const [loading, setLoading] = useState(false)
+  const [modelFilter, setModelFilter] = useState<string | undefined>(undefined)
+  const [search, setSearch] = useState('')
+
+  useEffect(() => { loadRows() }, [])
+
+  const loadRows = async () => {
+    try {
+      setLoading(true)
+      setRows(await getAllExtractions(2000))
+    } catch {
+      message.error('載入 Extractions 失敗')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const modelOptions = [...new Set(rows.map(r => r.model_id).filter(Boolean))].map(m => ({
+    label: m, value: m,
+  }))
+
+  const filtered = rows.filter(r => {
+    if (modelFilter && r.model_id !== modelFilter) return false
+    if (search) {
+      const q = search.toLowerCase()
+      return (
+        (r.doc_id || '').toLowerCase().includes(q) ||
+        (r.NAME || '').toLowerCase().includes(q) ||
+        (r.file_name || '').toLowerCase().includes(q)
+      )
+    }
+    return true
+  })
+
+  const columns: ColumnsType<any> = [
+    {
+      title: 'Model',
+      dataIndex: 'model_id',
+      key: 'model_id',
+      width: 220,
+      render: (m: string) => <ProviderTag provider={m?.includes('gemini') ? 'gemini' : m?.includes('claude') ? 'claude' : ''} />,
+    },
+    {
+      title: '檔案 / Doc ID',
+      dataIndex: 'doc_id',
+      key: 'doc_id',
+      width: 200,
+      ellipsis: true,
+      render: (id: string, r: any) => (
+        <Space direction="vertical" size={0}>
+          <Text style={{ fontSize: 12 }}>{r.file_name || id}</Text>
+          <Text type="secondary" style={{ fontSize: 10 }}>{id}</Text>
+        </Space>
+      ),
+    },
+    { title: 'NAME', dataIndex: 'NAME', key: 'NAME', width: 130 },
+    { title: 'SEX', dataIndex: 'SEX', key: 'SEX', width: 55 },
+    { title: 'DATE_OF_BIRTH', dataIndex: 'DATE_OF_BIRTH', key: 'dob', width: 120 },
+    { title: 'PLACE_OF_BIRTH', dataIndex: 'PLACE_OF_BIRTH', key: 'pob', ellipsis: true },
+    {
+      title: '萃取時間',
+      dataIndex: 'extracted_at',
+      key: 'extracted_at',
+      width: 150,
+      render: (t: string) => t ? dayjs(t).format('YYYY-MM-DD HH:mm') : '-',
+    },
+  ]
+
+  return (
+    <Space direction="vertical" style={{ width: '100%' }} size="middle">
+      <Row justify="space-between" align="middle" gutter={12}>
+        <Col>
+          <Space>
+            <Select
+              allowClear
+              placeholder="篩選 Model"
+              style={{ width: 240 }}
+              options={modelOptions}
+              value={modelFilter}
+              onChange={setModelFilter}
+            />
+            <Input.Search
+              placeholder="搜尋檔案名稱 / NAME"
+              style={{ width: 220 }}
+              allowClear
+              onSearch={setSearch}
+              onChange={e => !e.target.value && setSearch('')}
+            />
+          </Space>
+        </Col>
+        <Col>
+          <Space>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              顯示 {filtered.length} / {rows.length} 筆（BQ 共 {totalRows.toLocaleString()} 筆）
+            </Text>
+            <Button icon={<ReloadOutlined />} onClick={loadRows} loading={loading}>
+              重新整理
+            </Button>
+          </Space>
+        </Col>
+      </Row>
+
+      <Table
+        columns={columns}
+        dataSource={filtered}
+        rowKey={(r, i) => `${r.run_id}-${r.doc_id}-${i}`}
+        loading={loading}
+        size="small"
+        scroll={{ x: 900 }}
+        pagination={{
+          pageSize: 20,
+          showSizeChanger: true,
+          pageSizeOptions: ['20', '50', '100'],
+          showTotal: (n) => `共 ${n} 筆`,
+        }}
+      />
+    </Space>
+  )
+}
+
+// ============================================================================
 // 主頁面
 // ============================================================================
 const DataManagePage = () => {
@@ -441,6 +566,25 @@ const DataManagePage = () => {
                   </Space>
                 ),
                 children: <GroundTruthTab onChange={loadStatus} />,
+              },
+              {
+                key: 'extractions',
+                label: (
+                  <Space>
+                    <TableOutlined />
+                    Extractions 明細
+                    {status && (
+                      <Tag style={{ marginLeft: 4 }}>
+                        {status.tables['extractions']?.rows ?? 0}
+                      </Tag>
+                    )}
+                  </Space>
+                ),
+                children: (
+                  <ExtractionsTab
+                    totalRows={status?.tables['extractions']?.rows ?? 0}
+                  />
+                ),
               },
             ]}
           />
