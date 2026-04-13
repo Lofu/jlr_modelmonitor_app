@@ -285,6 +285,62 @@ class BQClient:
         return list(self.client.query(query).result())[0]["cnt"]
 
     # ------------------------------------------------------------------ #
+    #  CSV 匯入（data/extracts/*.csv → extraction_runs + extractions）
+    # ------------------------------------------------------------------ #
+    def import_csv(
+        self,
+        csv_path: Path,
+        provider: str,
+        location: str,
+        prompt: str,
+        gcp_project: str = None,
+    ) -> str:
+        """將萃取結果 CSV 匯入 BQ，model_id 從 MODEL 欄或檔名自動取得，回傳 run_id"""
+        df = pd.read_csv(csv_path)
+
+        # 取 model_id：優先用 MODEL 欄，否則從檔名解析
+        if "MODEL" in df.columns and df["MODEL"].notna().any():
+            model_id = str(df["MODEL"].dropna().iloc[0])
+        else:
+            # 從檔名 extract_model_id_from_filename
+            import re
+            m = re.match(r"(.+?)_extract_v[\d.]+\.csv$", csv_path.name)
+            model_id = m.group(1) if m else csv_path.stem
+
+        defendants = []
+        for _, row in df.iterrows():
+            doc_id = str(row.get("DOC_ID", "") or "")
+            case_link = str(row.get("CASE_LINK", "") or "")
+            # 若 doc_id 空則從 case_link 解析
+            if not doc_id and case_link:
+                import re
+                mm = re.search(r"\.vn/([^/]+)/chi", case_link)
+                if mm:
+                    doc_id = mm.group(1)
+            defendants.append({
+                "DOC_ID":         doc_id,
+                "CASE_LINK":      case_link,
+                "NAME":           str(row.get("NAME", "") or ""),
+                "SEX":            str(row.get("SEX", "") or ""),
+                "DATE_OF_BIRTH":  str(row.get("DATE_OF_BIRTH", "") or ""),
+                "PLACE_OF_BIRTH": str(row.get("PLACE_OF_BIRTH", "") or ""),
+            })
+
+        run_id = self.make_run_id()
+        now = datetime.now(timezone.utc)
+
+        self.save_run(
+            run_id=run_id, model_id=model_id, provider=provider,
+            location=location, gcp_project=gcp_project or self.project,
+            prompt=prompt, started_at=now, completed_at=now,
+            total_files=len(defendants), success_count=len(defendants), error_count=0,
+        )
+        self.save_extractions(run_id, model_id, prompt, defendants, now)
+
+        print(f"✅ CSV 匯入完成 {csv_path.name}：{len(defendants)} 筆 → run_id={run_id}")
+        return run_id
+
+    # ------------------------------------------------------------------ #
     #  歷史 JSONL 匯入
     # ------------------------------------------------------------------ #
     def import_jsonl(

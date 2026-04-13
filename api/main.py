@@ -123,6 +123,13 @@ class BQImportRequest(BaseModel):
     location: str
     prompt: Optional[str] = None
 
+class BQImportCsvRequest(BaseModel):
+    """CSV 匯入 BQ 請求（data/extracts/ 內的 CSV）"""
+    csv_file: str          # EXTRACT_DIR 內的檔名
+    provider: str          # model_id 從 CSV MODEL 欄或檔名自動取得
+    location: str = "us-central1"
+    prompt: Optional[str] = None
+
 # ============================================================================
 # BQ 客戶端 helper
 # ============================================================================
@@ -565,6 +572,46 @@ async def list_jsonl_files():
         })
     files.sort(key=lambda x: x["modified_time"], reverse=True)
     return files
+
+@app.get("/api/extract-files")
+async def list_extract_files():
+    """列出 data/extracts/ 內所有 CSV 萃取結果"""
+    files = []
+    for csv_file in EXTRACT_DIR.glob("*.csv"):
+        try:
+            df = pd.read_csv(csv_file)
+            model_id = str(df["MODEL"].dropna().iloc[0]) if "MODEL" in df.columns and df["MODEL"].notna().any() \
+                       else extract_model_id_from_filename(csv_file.name)
+            record_count = len(df)
+        except Exception:
+            model_id = extract_model_id_from_filename(csv_file.name)
+            record_count = 0
+        files.append({
+            "file_name":    csv_file.name,
+            "model_id":     model_id,
+            "record_count": record_count,
+            "file_size":    csv_file.stat().st_size,
+            "modified_time": datetime.fromtimestamp(csv_file.stat().st_mtime).isoformat(),
+        })
+    files.sort(key=lambda x: x["modified_time"], reverse=True)
+    return files
+
+@app.post("/api/bq/import-csv")
+async def import_csv_to_bq(request: BQImportCsvRequest):
+    """將 data/extracts/ 的 CSV 匯入 BigQuery（extraction_runs + extractions 兩張表）"""
+    csv_path = EXTRACT_DIR / request.csv_file
+    if not csv_path.exists():
+        raise HTTPException(status_code=404, detail=f"找不到檔案: {request.csv_file}")
+
+    bq = await asyncio.to_thread(_get_bq)
+    run_id = await asyncio.to_thread(
+        bq.import_csv,
+        csv_path=csv_path,
+        provider=request.provider,
+        location=request.location,
+        prompt=request.prompt or SYSTEM_PROMPT,
+    )
+    return {"status": "success", "run_id": run_id, "target_tables": ["extraction_runs", "extractions"]}
 
 @app.post("/api/bq/import-jsonl")
 async def import_jsonl_to_bq(request: BQImportRequest):

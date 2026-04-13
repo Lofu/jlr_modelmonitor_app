@@ -91,6 +91,21 @@ export interface BQImportRequest {
   prompt?: string
 }
 
+export interface BQImportCsvRequest {
+  csv_file: string
+  provider: string
+  location?: string
+  prompt?: string
+}
+
+export interface ExtractFileInfo {
+  file_name: string
+  model_id: string
+  record_count: number
+  file_size: number
+  modified_time: string
+}
+
 export interface ConfigInfo {
   pdf_dir: string
   pdf_count: number
@@ -153,6 +168,16 @@ export const listBQRuns = (): Promise<BQRun[]> => {
 // 列出可匯入的 JSONL 檔案
 export const listJsonlFiles = (): Promise<any[]> => {
   return api.get('/api/bq/jsonl-files')
+}
+
+// 列出 data/extracts/ 的 CSV 萃取結果
+export const listExtractFiles = (): Promise<ExtractFileInfo[]> => {
+  return api.get('/api/extract-files')
+}
+
+// 匯入 CSV 至 BQ（→ extraction_runs + extractions）
+export const importCsvToBQ = (request: BQImportCsvRequest): Promise<any> => {
+  return api.post('/api/bq/import-csv', request)
 }
 
 // 匯入 JSONL 至 BQ
