@@ -4,11 +4,13 @@ import {
   FileTextOutlined,
   BarChartOutlined,
   FolderOpenOutlined,
+  DatabaseOutlined,
 } from '@ant-design/icons'
 import { useNavigate, useLocation } from 'react-router-dom'
 import ExtractPage from './pages/ExtractPage'
 import AnalyzePage from './pages/AnalyzePage'
 import FilesPage from './pages/FilesPage'
+import DataManagePage from './pages/DataManagePage'
 
 const { Content, Sider } = Layout
 
@@ -32,6 +34,11 @@ function App() {
       key: '/files',
       icon: <FolderOpenOutlined />,
       label: '檔案管理',
+    },
+    {
+      key: '/data',
+      icon: <DatabaseOutlined />,
+      label: '資料管理',
     },
   ]
 
@@ -193,6 +200,9 @@ function App() {
               </div>
               <div style={{ display: location.pathname === '/files' ? 'block' : 'none' }}>
                 <FilesPage />
+              </div>
+              <div style={{ display: location.pathname === '/data' ? 'block' : 'none' }}>
+                <DataManagePage />
               </div>
             </div>
           </Content>

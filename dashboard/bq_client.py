@@ -326,6 +326,31 @@ class BQClient:
         return run_id
 
     # ------------------------------------------------------------------ #
+    #  刪除操作
+    # ------------------------------------------------------------------ #
+    def delete_runs(self, run_ids: List[str]) -> int:
+        """刪除指定 run_id 的執行紀錄及其所有萃取結果，回傳刪除筆數"""
+        if not run_ids:
+            return 0
+        ids_str = ", ".join(f"'{r}'" for r in run_ids)
+        # 先刪 extractions（有外鍵依賴）
+        self.client.query(
+            f"DELETE FROM `{self.dataset_ref}.{BQ_TABLE_EXTRACTIONS}` WHERE run_id IN ({ids_str})"
+        ).result()
+        # 再刪 runs
+        job = self.client.query(
+            f"DELETE FROM `{self.dataset_ref}.{BQ_TABLE_RUNS}` WHERE run_id IN ({ids_str})"
+        )
+        job.result()
+        return len(run_ids)
+
+    def truncate_ground_truth(self):
+        """清空 ground_truth 表"""
+        self.client.query(
+            f"DELETE FROM `{self.dataset_ref}.{BQ_TABLE_GROUND_TRUTH}` WHERE TRUE"
+        ).result()
+
+    # ------------------------------------------------------------------ #
     #  BQ 狀態
     # ------------------------------------------------------------------ #
     def status(self) -> dict:

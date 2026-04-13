@@ -174,6 +174,21 @@ export const analyzeAccuracyBQ = (request: BQAnalyzeRequest): Promise<any> => {
   return api.post('/api/analyze-bq', request)
 }
 
+// 刪除指定 run（含其萃取結果）
+export const deleteBQRuns = (runIds: string[]): Promise<any> => {
+  return api.delete('/api/bq/runs', { data: { run_ids: runIds } })
+}
+
+// 清空 ground_truth 表
+export const clearGroundTruth = (): Promise<any> => {
+  return api.delete('/api/bq/ground-truth')
+}
+
+// 查詢單一 run 的萃取明細
+export const getRunExtractions = (runId: string): Promise<any[]> => {
+  return api.get(`/api/bq/runs/${runId}/extractions`)
+}
+
 // WebSocket 連接
 export const createWebSocket = (onMessage: (data: any) => void): WebSocket => {
   const wsUrl = API_BASE_URL.replace('http', 'ws')

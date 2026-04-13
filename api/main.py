@@ -599,6 +599,34 @@ async def upload_ground_truth_to_bq(file: UploadFile = File(...)):
     finally:
         tmp_path.unlink(missing_ok=True)
 
+class BQDeleteRunsRequest(BaseModel):
+    run_ids: List[str]
+
+@app.delete("/api/bq/runs")
+async def delete_bq_runs(request: BQDeleteRunsRequest):
+    """刪除指定 run_id 的執行紀錄及其所有萃取結果"""
+    if not request.run_ids:
+        raise HTTPException(status_code=400, detail="請提供至少一個 run_id")
+    bq = await asyncio.to_thread(_get_bq)
+    count = await asyncio.to_thread(bq.delete_runs, request.run_ids)
+    return {"status": "success", "deleted_runs": count}
+
+@app.delete("/api/bq/ground-truth")
+async def clear_ground_truth():
+    """清空 ground_truth 表"""
+    bq = await asyncio.to_thread(_get_bq)
+    await asyncio.to_thread(bq.truncate_ground_truth)
+    return {"status": "success"}
+
+@app.get("/api/bq/runs/{run_id}/extractions")
+async def get_run_extractions(run_id: str):
+    """查詢單一 run 的萃取明細"""
+    bq = await asyncio.to_thread(_get_bq)
+    df = await asyncio.to_thread(bq.get_extractions_by_runs, [run_id])
+    if df.empty:
+        return []
+    return df[["doc_id", "file_name", "NAME", "SEX", "DATE_OF_BIRTH", "PLACE_OF_BIRTH", "extracted_at"]].to_dict(orient="records")
+
 @app.post("/api/analyze-bq")
 async def analyze_accuracy_bq(request: BQAnalyzeRequest):
     """使用 BigQuery 資料進行準確度分析"""
