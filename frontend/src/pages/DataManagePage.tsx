@@ -117,11 +117,19 @@ const RunsTab = ({ onRunsChange }: { onRunsChange: () => void }) => {
       ),
     },
     {
-      title: 'Prompt Hash',
-      dataIndex: 'prompt_hash',
-      key: 'prompt_hash',
-      width: 115,
-      render: (h: string) => <Text code style={{ fontSize: 11 }}>{h}</Text>,
+      title: 'Prompt',
+      key: 'prompt',
+      render: (_, r) => (
+        <Tooltip title={r.prompt_preview}>
+          <Text
+            type="secondary"
+            style={{ fontSize: 11, cursor: 'pointer' }}
+            onClick={() => { setDrawerRun(r); setPromptModalOpen(true) }}
+          >
+            {r.prompt_preview?.slice(0, 60)}{r.prompt_preview?.length > 60 ? '…' : ''}
+          </Text>
+        </Tooltip>
+      ),
     },
     {
       title: 'Run ID',
@@ -129,7 +137,9 @@ const RunsTab = ({ onRunsChange }: { onRunsChange: () => void }) => {
       key: 'run_id',
       ellipsis: true,
       render: (id: string) => (
-        <Text type="secondary" style={{ fontSize: 11 }}>{id}</Text>
+        <Tooltip title={id}>
+          <Text type="secondary" style={{ fontSize: 11 }}>{id}</Text>
+        </Tooltip>
       ),
     },
     {
@@ -183,8 +193,6 @@ const RunsTab = ({ onRunsChange }: { onRunsChange: () => void }) => {
           <Text style={{ fontSize: 12 }}>{v}</Text>
         </Tooltip>
       )},
-    { title: 'prompt_hash', dataIndex: 'prompt_hash', key: 'prompt_hash', width: 110,
-      render: (v: string) => <Text code style={{ fontSize: 10 }}>{v}</Text> },
     { title: 'extracted_at', dataIndex: 'extracted_at', key: 'extracted_at', width: 150,
       render: (t: string) => t ? dayjs(t).format('YYYY-MM-DD HH:mm') : '-' },
     { title: 'doc_id', dataIndex: 'doc_id', key: 'doc_id', width: 160, ellipsis: true,
@@ -474,8 +482,6 @@ const ExtractionsTab = ({ totalRows }: { totalRows: number }) => {
           </Space>
         </Tooltip>
       )},
-    { title: 'prompt_hash', dataIndex: 'prompt_hash', key: 'prompt_hash', width: 110,
-      render: (v: string) => <Text code style={{ fontSize: 10 }}>{v}</Text> },
     { title: 'extracted_at', dataIndex: 'extracted_at', key: 'extracted_at', width: 150,
       render: (t: string) => t ? dayjs(t).format('YYYY-MM-DD HH:mm') : '-' },
     { title: 'doc_id', dataIndex: 'doc_id', key: 'doc_id', width: 160, ellipsis: true,
