@@ -5,6 +5,22 @@ echo "🚀 啟動 LLM 萃取監控系統"
 echo "================================"
 echo ""
 
+# 關閉已在執行的服務
+echo "檢查並關閉舊有服務..."
+BACKEND_PIDS=$(lsof -ti:8000 2>/dev/null)
+if [ -n "$BACKEND_PIDS" ]; then
+    echo "  關閉後端 (port 8000) PID: $BACKEND_PIDS"
+    echo "$BACKEND_PIDS" | xargs kill -9 2>/dev/null
+fi
+FRONTEND_PIDS=$(lsof -ti:5173 2>/dev/null)
+if [ -n "$FRONTEND_PIDS" ]; then
+    echo "  關閉前端 (port 5173) PID: $FRONTEND_PIDS"
+    echo "$FRONTEND_PIDS" | xargs kill -9 2>/dev/null
+fi
+# 關閉既有的同名 tmux session
+tmux kill-session -t llm-monitor 2>/dev/null
+echo ""
+
 # 檢查是否安裝 tmux 或 screen
 if command -v tmux &> /dev/null; then
     echo "使用 tmux 同時啟動前後端..."

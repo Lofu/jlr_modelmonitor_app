@@ -6,8 +6,9 @@ from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Uplo
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
-from typing import List, Dict, Any, Optional
+from typing import List, Optional
 from pathlib import Path
+import hashlib
 import json
 import asyncio
 import threading
@@ -253,105 +254,61 @@ async def list_pdf_files():
     pdf_files.sort(key=lambda x: x["name"])
     return pdf_files
 
-@app.post("/api/extract")
-async def extract_pdfs(request: ExtractRequest):
-    """執行 PDF 萃取（異步）"""
+async def _run_extraction_background(request: ExtractRequest, pdf_files: list):
+    """在背景執行萃取，完成後廣播 WebSocket 訊息"""
+    # CSV / JSONL 皆加入 prompt hash：同 prompt 可斷點續跑，不同 prompt 全新開始
+    prompt_used = request.system_prompt or SYSTEM_PROMPT
+    prompt_hash_short = hashlib.sha256(prompt_used.encode()).hexdigest()[:12]
+
+    base_csv  = get_extract_filename(request.model_id)
+    base_jsonl = get_jsonl_filename(request.model_id)
+    csv_filename  = base_csv.replace('.csv',   f'_{prompt_hash_short}.csv')
+    jsonl_filename = base_jsonl.replace('.jsonl', f'_{prompt_hash_short}.jsonl')
+
+    csv_path  = EXTRACT_DIR / csv_filename
+    jsonl_path = OUTPUT_DIR / jsonl_filename
+
+    success_count = 0
+    error_count = 0
+    count_lock = threading.Lock()
+    loop = asyncio.get_running_loop()
+
+    def progress_callback(current, total, filename, status, error_msg=None):
+        nonlocal success_count, error_count
+        with count_lock:
+            if status == "success":
+                success_count += 1
+            elif status == "error":
+                error_count += 1
+        asyncio.run_coroutine_threadsafe(
+            manager.broadcast({
+                "type": "progress",
+                "current": current,
+                "total": total,
+                "file": filename,
+                "status": status,
+                "error": error_msg
+            }),
+            loop
+        )
+
     try:
-        # 建立模型配置
         model_config = ModelConfig(
             model_id=request.model_id,
             provider=request.provider,
             location=request.location,
             temperature=request.temperature
         )
-        
-        # 初始化萃取器
         extractor = PDFExtractor(
             model_config=model_config,
             gcp_project=request.gcp_project,
             system_prompt=request.system_prompt or SYSTEM_PROMPT
         )
-        
-        # 取得要處理的 PDF 檔案
-        if request.pdf_files:
-            # 使用指定的檔案列表
-            pdf_files = [PDF_DIR / filename for filename in request.pdf_files]
-            # 驗證檔案是否存在
-            pdf_files = [f for f in pdf_files if f.exists()]
-            if not pdf_files:
-                raise HTTPException(status_code=404, detail="指定的 PDF 檔案不存在")
-            
-            print(f"\n{'='*60}")
-            print(f"📊 萃取請求:")
-            print(f"  - 模型: {request.model_id}")
-            print(f"  - 處理模式: 指定檔案")
-            print(f"  - 選擇檔案數: {len(pdf_files)}")
-            print(f"  - 時間限制: {request.max_runtime_minutes} 分鐘" if request.max_runtime_minutes else "  - 時間限制: 無")
-            print(f"  - 選擇檔案: {[f.name for f in pdf_files[:3]]}..." if len(pdf_files) > 3 else f"  - 選擇檔案: {[f.name for f in pdf_files]}")
-            print(f"{'='*60}\n")
-        else:
-            # 取得所有檔案並根據 num_files 參數決定數量
-            all_pdf_files = sorted(PDF_DIR.glob("*.pdf"))
-            
-            if not all_pdf_files:
-                raise HTTPException(status_code=404, detail="找不到 PDF 檔案")
-            
-            num_files_to_process = request.num_files or len(all_pdf_files)
-            num_files_to_process = min(num_files_to_process, len(all_pdf_files))
-            
-            pdf_files = all_pdf_files[:num_files_to_process]
-            
-            print(f"\n{'='*60}")
-            print(f"📊 萃取請求:")
-            print(f"  - 模型: {request.model_id}")
-            print(f"  - 處理模式: 範圍選擇")
-            print(f"  - 總 PDF 檔案數: {len(all_pdf_files)}")
-            print(f"  - 請求處理數量: {request.num_files}")
-            print(f"  - 實際處理數量: {num_files_to_process}")
-            print(f"  - 時間限制: {request.max_runtime_minutes} 分鐘" if request.max_runtime_minutes else "  - 時間限制: 無")
-            print(f"{'='*60}\n")
-        
-        # 準備輸出檔案
-        csv_filename = get_extract_filename(request.model_id)
-        jsonl_filename = get_jsonl_filename(request.model_id)
-        csv_path = EXTRACT_DIR / csv_filename
-        jsonl_path = OUTPUT_DIR / jsonl_filename
-        
-        # 錯誤和成功計數（使用 lock 保護，多線程安全）
-        success_count = 0
-        error_count = 0
-        count_lock = threading.Lock()
 
-        loop = asyncio.get_running_loop()
-
-        # 進度回調函數（會在多個子執行緒中並行觸發）
-        def progress_callback(current, total, filename, status, error_msg=None):
-            nonlocal success_count, error_count
-
-            with count_lock:
-                if status == "success":
-                    success_count += 1
-                elif status == "error":
-                    error_count += 1
-
-            # 使用 run_coroutine_threadsafe 來跨執行緒廣播進度
-            asyncio.run_coroutine_threadsafe(
-                manager.broadcast({
-                    "type": "progress",
-                    "current": current,
-                    "total": total,
-                    "file": filename,
-                    "status": status,
-                    "error": error_msg
-                }),
-                loop
-            )
-        
-        # 執行批次萃取 (使用 asyncio.to_thread 避免阻塞 event loop)
         pdf_file_names = [pdf.name for pdf in pdf_files]
         started_at = datetime.now(timezone.utc)
 
-        result_df = await asyncio.to_thread(
+        await asyncio.to_thread(
             extractor.batch_extract,
             pdf_files=pdf_file_names,
             output_jsonl=jsonl_path,
@@ -362,7 +319,7 @@ async def extract_pdfs(request: ExtractRequest):
 
         completed_at = datetime.now(timezone.utc)
 
-        # 萃取完成後非同步寫入 BigQuery（失敗不影響主流程）
+        # 萃取完成後寫入 BigQuery（失敗不影響主流程）
         bq_run_id = None
         try:
             defendants = []
@@ -415,19 +372,41 @@ async def extract_pdfs(request: ExtractRequest):
             "errors": error_count,
             "csv_file": csv_filename
         })
+        logger.info(f"✅ 萃取完成: success={success_count}, errors={error_count}")
 
-        return {
-            "status": "success",
-            "total": len(pdf_files),
-            "success": success_count,
-            "errors": error_count,
-            "csv_file": csv_filename,
-            "jsonl_file": jsonl_filename,
-            "bq_run_id": bq_run_id,
-        }
-        
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"❌ 背景萃取失敗: {e}\n{traceback.format_exc()}")
+        await manager.broadcast({
+            "type": "error",
+            "message": str(e)
+        })
+
+
+@app.post("/api/extract")
+async def extract_pdfs(request: ExtractRequest):
+    """執行 PDF 萃取（立即返回，背景執行）"""
+    # 驗證輸入並解析 PDF 檔案列表
+    if request.pdf_files:
+        pdf_files = [PDF_DIR / filename for filename in request.pdf_files]
+        pdf_files = [f for f in pdf_files if f.exists()]
+        if not pdf_files:
+            raise HTTPException(status_code=404, detail="指定的 PDF 檔案不存在")
+        logger.info(f"📊 萃取請求: 模型={request.model_id}, 指定檔案={len(pdf_files)} 個")
+    else:
+        all_pdf_files = sorted(PDF_DIR.glob("*.pdf"))
+        if not all_pdf_files:
+            raise HTTPException(status_code=404, detail="找不到 PDF 檔案")
+        num_files_to_process = min(request.num_files or len(all_pdf_files), len(all_pdf_files))
+        pdf_files = all_pdf_files[:num_files_to_process]
+        logger.info(f"📊 萃取請求: 模型={request.model_id}, 範圍選擇={len(pdf_files)} 個")
+
+    # 啟動背景任務，立即返回
+    asyncio.create_task(_run_extraction_background(request, pdf_files))
+
+    return {
+        "status": "started",
+        "message": f"萃取已開始，共 {len(pdf_files)} 個檔案，請透過 WebSocket 追蹤進度"
+    }
 
 @app.post("/api/analyze")
 async def analyze_accuracy(request: AnalyzeRequest):
@@ -706,6 +685,25 @@ async def get_all_extractions(limit: int = 1000):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/api/bq/case-counts")
+async def get_case_counts():
+    """每個 (model_id, prompt_hash) 案例去重後的實際筆數"""
+    try:
+        bq = await asyncio.to_thread(_get_bq)
+        return await asyncio.to_thread(bq.count_by_case)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/api/bq/extractions")
+async def clear_extractions():
+    """清空 extractions 表"""
+    try:
+        bq = await asyncio.to_thread(_get_bq)
+        await asyncio.to_thread(bq.truncate_extractions)
+        return {"status": "success"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/api/analyze-bq")
 async def analyze_accuracy_bq(request: BQAnalyzeRequest):
     """使用 BigQuery 資料進行準確度分析"""
@@ -728,22 +726,30 @@ async def analyze_accuracy_bq(request: BQAnalyzeRequest):
         model_display_names = {}
         model_extraction_counts = {}  # 各模型原始萃取筆數
 
-        # 統計每個 model_id 出現的 run 數，超過 1 個時加 run_id 前 8 碼區分
-        run_model = extractions_df[["run_id", "model_id"]].drop_duplicates()
-        model_run_count = run_model.groupby("model_id")["run_id"].count()
+        # 同模型 + 同 prompt_hash = 同一種 case，合併萃取資料後再分析
+        model_prompt_count = extractions_df.groupby("model_id")["prompt_hash"].nunique()
 
-        for (run_id, model_id), subset in extractions_df.groupby(["run_id", "model_id"]):
-            if model_run_count[model_id] > 1:
-                label = f"{model_id} ({run_id[:8]})"
+        for (model_id, prompt_hash), subset in extractions_df.groupby(["model_id", "prompt_hash"]):
+            multi_prompt = model_prompt_count[model_id] > 1
+            label = f"{model_id} ({prompt_hash[:8]})" if multi_prompt else model_id
+            base_norm = analyzer._normalize_model_name(model_id)
+            norm_id = f"{base_norm}_{prompt_hash[:8]}" if multi_prompt else base_norm
+
+            # 同一份檔案可能在多個 run 中各處理一次（重複存入 BQ）
+            # 正確去重：每份文件只保留最新一次萃取的「全部行」（一份 PDF 可有多位被告）
+            if "extracted_at" in subset.columns:
+                latest_per_file = subset.groupby("file_name")["extracted_at"].transform("max")
+                deduped = subset[subset["extracted_at"] == latest_per_file]
             else:
-                label = model_id
+                deduped = subset
 
-            df = subset[["file_name", "NAME", "SEX", "DATE_OF_BIRTH", "PLACE_OF_BIRTH", "case_link"]].copy()
+            df = deduped[["file_name", "NAME", "SEX", "DATE_OF_BIRTH", "PLACE_OF_BIRTH", "case_link"]].copy()
             df = df.rename(columns={"case_link": "CASE_LINK"})
 
-            model_extraction_counts[label] = len(df)  # 記錄原始萃取數
-            loaded = analyzer.load_model_result(df, label)
-            norm_id = analyzer._normalize_model_name(label)
+            model_extraction_counts[norm_id] = len(df)
+            # 必須傳入 norm_id 而非 label，讓內部欄位命名（e.g. gemini_2.5_b1511df5_SEX）
+            # 與 model_dfs 的 key 一致，否則 calculate_accuracy 找不到欄位 → NA
+            loaded = analyzer.load_model_result(df, norm_id)
             model_dfs[norm_id] = loaded
             model_display_names[norm_id] = label
 
@@ -755,17 +761,11 @@ async def analyze_accuracy_bq(request: BQAnalyzeRequest):
         name_accuracy_df = analyzer.calculate_name_accuracy(merged_df, list(model_dfs.keys()))
         full_accuracy_df = pd.concat([name_accuracy_df, accuracy_df], axis=0).reset_index(drop=True)
 
-        # 對應 norm_id → extraction count
-        model_extraction_counts_norm = {
-            analyzer._normalize_model_name(label): count
-            for label, count in model_extraction_counts.items()
-        }
-
         return {
             "success": True,
             "model_names": list(model_dfs.keys()),
             "model_display_names": model_display_names,
-            "model_extraction_counts": model_extraction_counts_norm,
+            "model_extraction_counts": model_extraction_counts,
             "accuracy_summary": full_accuracy_df.to_dict(orient="records"),
             "field_list": ["NAME", "SEX", "DATE_OF_BIRTH", "DATE_OF_BIRTH_YEAR", "PLACE_OF_BIRTH"],
             "total_records": len(merged_df),

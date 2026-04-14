@@ -215,6 +215,16 @@ export const clearGroundTruth = (): Promise<any> => {
   return api.delete('/api/bq/ground-truth')
 }
 
+// 清空 extractions 表
+export const clearExtractions = (): Promise<any> => {
+  return api.delete('/api/bq/extractions')
+}
+
+// 每個 case (model_id + prompt_hash) 去重後的實際筆數
+export const getCaseCounts = (): Promise<Array<{ model_id: string; prompt_hash: string; record_count: number }>> => {
+  return api.get('/api/bq/case-counts')
+}
+
 // 查詢單一 run 的萃取明細
 export const getRunExtractions = (runId: string): Promise<any[]> => {
   return api.get(`/api/bq/runs/${runId}/extractions`)

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import {
   Card, Table, Button, Space, Popconfirm, message, Tag,
-  Typography, Modal, Form, Select, Alert, Row, Col, Upload,
+  Typography, Modal, Form, Select, Alert, Row, Col, Upload, Tooltip,
 } from 'antd'
 import {
   FolderOpenOutlined, DeleteOutlined, DownloadOutlined,
@@ -172,34 +172,34 @@ const FilesPage = () => {
     {
       title: '操作',
       key: 'actions',
-      width: 220,
+      width: 120,
       render: (_, r) => (
-        <Space>
-          <Button
-            type="link" size="small" icon={<DownloadOutlined />}
-            onClick={() => window.open(downloadFile(r.file_name), '_blank')}
-          >
-            下載
-          </Button>
-          <Button
-            type="link" size="small" icon={<ImportOutlined />}
-            style={{ color: '#00873e' }}
-            onClick={() => openImportModal(r)}
-          >
-            匯入 BQ
-          </Button>
+        <Space size={4}>
+          <Tooltip title="下載">
+            <Button
+              type="text" size="small" icon={<DownloadOutlined />}
+              onClick={() => window.open(downloadFile(r.file_name), '_blank')}
+            />
+          </Tooltip>
+          <Tooltip title="匯入 BQ">
+            <Button
+              type="text" size="small" icon={<ImportOutlined />}
+              style={{ color: '#00873e' }}
+              onClick={() => openImportModal(r)}
+            />
+          </Tooltip>
           <Popconfirm
             title="確定刪除這個檔案嗎？"
             description="此操作無法復原"
             onConfirm={() => handleDelete(r.file_name)}
             okText="確定" cancelText="取消"
           >
-            <Button
-              type="link" danger size="small" icon={<DeleteOutlined />}
-              loading={deleting === r.file_name}
-            >
-              刪除
-            </Button>
+            <Tooltip title="刪除">
+              <Button
+                type="text" danger size="small" icon={<DeleteOutlined />}
+                loading={deleting === r.file_name}
+              />
+            </Tooltip>
           </Popconfirm>
         </Space>
       ),
@@ -238,6 +238,7 @@ const FilesPage = () => {
             rowKey="file_name"
             loading={loading}
             size="small"
+            scroll={{ x: 'max-content' }}
             pagination={{ pageSize: 10, showSizeChanger: true, showTotal: (n) => `共 ${n} 個檔案` }}
           />
         </Card>

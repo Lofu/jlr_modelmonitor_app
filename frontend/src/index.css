@@ -457,3 +457,10 @@ code {
   color: var(--primary-green-dark);
   font-weight: 600;
 }
+
+/* 側邊欄收合按鈕 - 透明背景顯示波動 */
+.ant-layout-sider-trigger {
+  background: rgba(0, 135, 62, 0.06) !important;
+  backdrop-filter: blur(16px);
+  border-top: 1px solid rgba(0, 135, 62, 0.12) !important;
+}

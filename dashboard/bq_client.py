@@ -248,6 +248,26 @@ class BQClient:
         """
         return self.client.query(query).to_dataframe()
 
+    def count_by_case(self) -> list:
+        """每個 (model_id, prompt_hash) 案例去重後的實際筆數
+        同一份檔案若在多個 run 中出現，保留最新一次萃取的所有行"""
+        query = f"""
+        SELECT model_id, prompt_hash, COUNT(*) AS record_count
+        FROM (
+            SELECT model_id, prompt_hash, file_name, extracted_at,
+                   MAX(extracted_at) OVER (
+                       PARTITION BY model_id, prompt_hash, file_name
+                   ) AS max_at
+            FROM `{self.dataset_ref}.{BQ_TABLE_EXTRACTIONS}`
+        )
+        WHERE extracted_at = max_at
+        GROUP BY model_id, prompt_hash
+        """
+        df = self.client.query(query).to_dataframe()
+        if df.empty:
+            return []
+        return df.fillna("").to_dict(orient="records")
+
     def get_all_extractions(self, limit: int = 1000) -> pd.DataFrame:
         """查詢 extractions 表所有資料（全欄位，最新 limit 筆）"""
         query = f"""
@@ -435,6 +455,12 @@ class BQClient:
         """清空 ground_truth 表"""
         self.client.query(
             f"DELETE FROM `{self.dataset_ref}.{BQ_TABLE_GROUND_TRUTH}` WHERE TRUE"
+        ).result()
+
+    def truncate_extractions(self):
+        """清空 extractions 表"""
+        self.client.query(
+            f"DELETE FROM `{self.dataset_ref}.{BQ_TABLE_EXTRACTIONS}` WHERE TRUE"
         ).result()
 
     # ------------------------------------------------------------------ #

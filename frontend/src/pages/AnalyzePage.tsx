@@ -14,6 +14,8 @@ import {
   Typography,
   Tag,
   Select,
+  Modal,
+  Collapse,
 } from 'antd'
 import {
   BarChartOutlined,
@@ -23,9 +25,9 @@ import {
 
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as ReTooltip,
-  Legend, ResponsiveContainer, Cell, LabelList,
+  Legend, ResponsiveContainer, Cell, LabelList, ReferenceLine,
 } from 'recharts'
-import { listBQRuns, analyzeAccuracyBQ, type BQRun } from '../services/api'
+import { listBQRuns, analyzeAccuracyBQ, getCaseCounts, type BQRun } from '../services/api'
 import dayjs from 'dayjs'
 
 const { Text } = Typography
@@ -40,6 +42,8 @@ const getProviderTag = (provider: string) => {
 const AnalyzePage = () => {
   const [runs, setRuns] = useState<BQRun[]>([])
   const [selectedRunIds, setSelectedRunIds] = useState<string[]>([])
+  const [caseCounts, setCaseCounts] = useState<Record<string, number>>({})
+  const [promptModal, setPromptModal] = useState<{ open: boolean; content: string }>({ open: false, content: '' })
   const [loading, setLoading] = useState(false)
   const [analyzing, setAnalyzing] = useState(false)
   const [result, setResult] = useState<any>(null)
@@ -52,11 +56,14 @@ const AnalyzePage = () => {
   const loadRuns = async () => {
     try {
       setLoading(true)
-      const data = await listBQRuns()
+      const [data, counts] = await Promise.all([listBQRuns(), getCaseCounts()])
       setRuns(data)
       if (data.length > 0 && selectedRunIds.length === 0) {
         setSelectedRunIds(data.map((r) => r.run_id))
       }
+      const countMap: Record<string, number> = {}
+      counts.forEach(c => { countMap[`${c.model_id}||${c.prompt_hash}`] = c.record_count })
+      setCaseCounts(countMap)
     } catch (error) {
       message.error('載入 BQ 執行紀錄失敗，請確認 BigQuery 連線設定')
     } finally {
@@ -64,13 +71,6 @@ const AnalyzePage = () => {
     }
   }
 
-  const toggleRun = (runId: string, checked: boolean) => {
-    if (checked) {
-      setSelectedRunIds((prev) => [...prev, runId])
-    } else {
-      setSelectedRunIds((prev) => prev.filter((id) => id !== runId))
-    }
-  }
 
   const handleAnalyze = async () => {
     if (selectedRunIds.length === 0) {
@@ -141,26 +141,47 @@ const AnalyzePage = () => {
   }
 
   const tableColumns = [
-    { title: '欄位', dataIndex: 'field', key: 'field', fixed: 'left' as const, width: 120 },
-    ...(result?.model_names || []).flatMap((modelId: string) => [
-      {
-        title: `${modelId} (完全一致率)`,
-        dataIndex: `${modelId}_exact`,
-        key: `${modelId}_exact`,
-        width: 180,
-        render: (value: string) => {
-          const pct = parseFloat(value)
-          if (isNaN(pct)) return value
-          return (
-            <span style={{ color: pct >= 80 ? '#3f8600' : pct >= 60 ? '#fa8c16' : '#cf1322', fontWeight: 'bold' }}>
-              {value}
-            </span>
-          )
+    { title: '欄位', dataIndex: 'field', key: 'field', fixed: 'left' as const, width: 90 },
+    ...(result?.model_names || []).map((modelId: string) => ({
+      title: (
+        <span style={{ fontWeight: 700, fontSize: 13 }}>
+          {result?.model_display_names?.[modelId] || modelId}
+        </span>
+      ),
+      key: modelId,
+      children: [
+        {
+          title: '完全一致率',
+          dataIndex: `${modelId}_exact`,
+          key: `${modelId}_exact`,
+          width: 110,
+          align: 'center' as const,
+          render: (value: string) => {
+            const pct = parseFloat(value)
+            if (isNaN(pct)) return value
+            return (
+              <span style={{ color: pct >= 80 ? '#3f8600' : pct >= 60 ? '#fa8c16' : '#cf1322', fontWeight: 'bold' }}>
+                {value}
+              </span>
+            )
+          },
         },
-      },
-      { title: `${modelId} (平均相似度)`, dataIndex: `${modelId}_avg`, key: `${modelId}_avg`, width: 180 },
-      { title: `${modelId} (成功/總數)`, dataIndex: `${modelId}_count`, key: `${modelId}_count`, width: 160 },
-    ]),
+        {
+          title: '平均相似度',
+          dataIndex: `${modelId}_avg`,
+          key: `${modelId}_avg`,
+          width: 110,
+          align: 'center' as const,
+        },
+        {
+          title: '成功/總數',
+          dataIndex: `${modelId}_count`,
+          key: `${modelId}_count`,
+          width: 100,
+          align: 'center' as const,
+        },
+      ],
+    })),
   ]
 
   const calculateOverallStats = () => {
@@ -182,17 +203,74 @@ const AnalyzePage = () => {
   const tableData = prepareTableData()
   const overallStats = calculateOverallStats()
   const colors = ['#1890ff', '#52c41a', '#fa8c16', '#f5222d', '#722ed1', '#13c2c2']
+  // 固定每個模型的顏色，所有圖表共用
+  const modelColorMap: Record<string, string> = {}
+  ;(result?.model_names || []).forEach((id: string, i: number) => {
+    modelColorMap[id] = colors[i % colors.length]
+  })
+
+  // ── Case 分組：同模型 + 同 prompt_hash = 一種 case ──────────────────────
+  type CaseGroup = {
+    key: string; provider: string; model_id: string
+    prompt_hash: string; prompt_preview: string
+    runs: BQRun[]; latestAt: string
+  }
+  const caseGroups: CaseGroup[] = (() => {
+    const map: Record<string, CaseGroup> = {}
+    runs.forEach(run => {
+      const key = `${run.model_id}||${run.prompt_hash}`
+      if (!map[key]) map[key] = {
+        key, provider: run.provider, model_id: run.model_id,
+        prompt_hash: run.prompt_hash, prompt_preview: run.prompt_preview || '',
+        runs: [], latestAt: run.started_at,
+      }
+      const c = map[key]
+      c.runs.push(run)
+      if (dayjs(run.started_at).isAfter(dayjs(c.latestAt))) c.latestAt = run.started_at
+    })
+    return Object.values(map).sort((a, b) =>
+      dayjs(b.latestAt).unix() - dayjs(a.latestAt).unix()
+    )
+  })()
+
+  const modelGroups = (() => {
+    const map: Record<string, { provider: string; model_id: string; cases: CaseGroup[] }> = {}
+    caseGroups.forEach(c => {
+      const mk = `${c.provider}||${c.model_id}`
+      if (!map[mk]) map[mk] = { provider: c.provider, model_id: c.model_id, cases: [] }
+      map[mk].cases.push(c)
+    })
+    return Object.values(map)
+  })()
+
+  const toggleCase = (caseGroup: CaseGroup) => {
+    const ids = caseGroup.runs.map(r => r.run_id)
+    const allSel = ids.every(id => selectedRunIds.includes(id))
+    if (allSel) {
+      setSelectedRunIds(prev => prev.filter(id => !ids.includes(id)))
+    } else {
+      setSelectedRunIds(prev => [...new Set([...prev, ...ids])])
+    }
+  }
+
+  const selectedCasesCount = caseGroups.filter(c =>
+    c.runs.every(r => selectedRunIds.includes(r.run_id))
+  ).length
 
   return (
+    <>
     <Space direction="vertical" style={{ width: '100%' }} size="large">
 
-      {/* ── 選擇執行版本 ── */}
+      {/* ── 選擇執行版本 + 計算邏輯說明 ── */}
+      <Row gutter={16} align="stretch">
+        <Col xs={24} lg={12}>
       <Card
         title={<Space><BarChartOutlined /><span>選擇分析對象</span></Space>}
+        style={{ height: '100%' }}
         extra={
           <Space>
             <Text type="secondary" style={{ fontSize: 13 }}>
-              已選 <Text strong style={{ color: '#00873e' }}>{selectedRunIds.length}</Text> / {runs.length} 筆
+              已選 <Text strong style={{ color: '#00873e' }}>{selectedCasesCount}</Text> / {caseGroups.length} 種
             </Text>
             <Button size="small" onClick={() => setSelectedRunIds(runs.map((r) => r.run_id))}>全選</Button>
             <Button size="small" onClick={() => setSelectedRunIds([])}>清除</Button>
@@ -209,64 +287,159 @@ const AnalyzePage = () => {
             type="warning" showIcon
           />
         ) : (
-          <Row gutter={[12, 12]}>
-            {runs.map((run) => {
-              const selected = selectedRunIds.includes(run.run_id)
+          <Space direction="vertical" style={{ width: '100%' }} size="middle">
+            {modelGroups.map(mg => {
+              const allModelIds = mg.cases.flatMap(c => c.runs.map(r => r.run_id))
+              const allModelSel = allModelIds.every(id => selectedRunIds.includes(id))
               return (
-                <Col xs={24} sm={12} xl={8} key={run.run_id}>
-                  <Card
-                    size="small"
-                    style={{
-                      border: selected ? '2px solid #00873e' : '1px solid #e8e8e8',
-                      background: selected ? '#f6ffed' : '#fafafa',
-                      cursor: 'pointer',
-                      transition: 'all 0.15s',
-                    }}
-                    onClick={() => toggleRun(run.run_id, !selected)}
-                  >
-                    <Space direction="vertical" size={6} style={{ width: '100%' }}>
-                      <Row justify="space-between" align="top">
-                        <Col>
-                          <Space size={6}>
-                            {getProviderTag(run.provider)}
-                            <Text strong style={{ fontSize: 14 }}>{run.model_id}</Text>
-                          </Space>
-                        </Col>
-                        <Col>
-                          <Checkbox checked={selected} onChange={(e) => { e.stopPropagation(); toggleRun(run.run_id, e.target.checked) }} />
-                        </Col>
-                      </Row>
-                      <Row gutter={16}>
-                        <Col>
-                          <Text type="secondary" style={{ fontSize: 12 }}>
-                            成功 <Text strong style={{ color: '#00873e' }}>{run.success_count}</Text> / {run.total_files} 筆
-                          </Text>
-                        </Col>
-                        <Col>
-                          <Text type="secondary" style={{ fontSize: 12 }}>
-                            {dayjs(run.started_at).format('YYYY-MM-DD HH:mm')}
-                          </Text>
-                        </Col>
-                      </Row>
-                      {run.prompt_preview && (
-                        <Text type="secondary" style={{ fontSize: 11, display: 'block', lineHeight: 1.4 }}>
-                          {run.prompt_preview.slice(0, 60)}{run.prompt_preview.length > 60 ? '…' : ''}
+                <div key={`${mg.provider}||${mg.model_id}`}>
+                  {/* 模型標題列 */}
+                  <Row align="middle" style={{ marginBottom: 8, paddingBottom: 6, borderBottom: '1px solid #f0f0f0' }}>
+                    <Col flex="auto">
+                      <Space size={8}>
+                        {getProviderTag(mg.provider)}
+                        <Text strong style={{ fontSize: 14 }}>{mg.model_id}</Text>
+                        <Text type="secondary" style={{ fontSize: 12 }}>
+                          {mg.cases.length} 種 Prompt
                         </Text>
-                      )}
-                      <Text type="secondary" style={{ fontSize: 11, color: '#bfbfbf' }}>
-                        run: {run.run_id.slice(0, 8)}
-                      </Text>
-                    </Space>
-                  </Card>
-                </Col>
+                      </Space>
+                    </Col>
+                    <Col>
+                      <Button size="small" type="link" style={{ padding: '0 4px', fontSize: 12 }}
+                        onClick={() => {
+                          if (allModelSel) {
+                            setSelectedRunIds(prev => prev.filter(id => !allModelIds.includes(id)))
+                          } else {
+                            setSelectedRunIds(prev => [...new Set([...prev, ...allModelIds])])
+                          }
+                        }}
+                      >
+                        {allModelSel ? '取消全選' : '全選此模型'}
+                      </Button>
+                    </Col>
+                  </Row>
+
+                  {/* 每種 case（同模型＋同 prompt）一張 card */}
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+                    {mg.cases.map(caseGroup => {
+                      const selected = caseGroup.runs.every(r => selectedRunIds.includes(r.run_id))
+                      const runCount = caseGroup.runs.length
+                      return (
+                        <div key={caseGroup.key} style={{ flex: '1 1 240px', minWidth: 200, maxWidth: 360 }}>
+                          <Card
+                            size="small"
+                            style={{
+                              border: selected ? '2px solid #00873e' : '1px solid #e8e8e8',
+                              background: selected ? '#f6ffed' : '#fafafa',
+                              cursor: 'pointer',
+                              transition: 'all 0.15s',
+                            }}
+                            styles={{ body: { padding: '8px 12px' } }}
+                            onClick={() => toggleCase(caseGroup)}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                              {/* 左側：固定兩行內容 */}
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                {/* 第一行：Prompt 版號 + 查看 */}
+                                <Space size={4}>
+                                  <Text type="secondary" style={{ fontSize: 11 }}>Prompt:</Text>
+                                  <Tag
+                                    style={{
+                                      background: '#262626', color: '#fff',
+                                      border: 'none', fontFamily: 'monospace',
+                                      fontSize: 12, padding: '1px 7px', margin: 0,
+                                    }}
+                                  >
+                                    {caseGroup.prompt_hash.slice(0, 8)}
+                                  </Tag>
+                                  <Button
+                                    type="link"
+                                    size="small"
+                                    style={{ padding: 0, fontSize: 11, height: 'auto' }}
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      const full = caseGroup.runs[0]?.prompt_full || caseGroup.prompt_preview || '（無內容）'
+                                      setPromptModal({ open: true, content: full })
+                                    }}
+                                  >
+                                    查看
+                                  </Button>
+                                </Space>
+                                {/* 第二行：筆數 + runs + 日期 */}
+                                <div style={{ marginTop: 4 }}>
+                                  <Space size={6}>
+                                    {(() => {
+                                      const cnt = caseCounts[`${caseGroup.model_id}||${caseGroup.prompt_hash}`]
+                                      return cnt !== undefined
+                                        ? <Text style={{ fontSize: 12 }}><Text strong style={{ color: '#00873e' }}>{cnt}</Text> 筆</Text>
+                                        : <Text type="secondary" style={{ fontSize: 12 }}>…</Text>
+                                    })()}
+                                    {runCount > 1 && (
+                                      <Tag color="blue" style={{ fontSize: 10, padding: '0 4px', margin: 0 }}>{runCount} runs</Tag>
+                                    )}
+                                    <Text type="secondary" style={{ fontSize: 11 }}>
+                                      {dayjs(caseGroup.latestAt).format('MM-DD HH:mm')}
+                                    </Text>
+                                  </Space>
+                                </div>
+                              </div>
+                              {/* 右側：Checkbox 固定靠右垂直置中 */}
+                              <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', height: '100%' }}>
+                                <Checkbox checked={selected} onChange={(e) => { e.stopPropagation(); toggleCase(caseGroup) }} />
+                              </div>
+                            </div>
+                          </Card>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
               )
             })}
-          </Row>
+          </Space>
         )}
       </Card>
+        </Col>
+
+        <Col xs={24} lg={12}>
+          <Card title="評估指標說明" style={{ height: '100%' }}>
+            <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+
+              <div>
+                <Text strong style={{ fontSize: 14, color: '#00873e' }}>完全一致率（Exact Match）</Text>
+                <div style={{ marginTop: 6, fontSize: 13, lineHeight: 1.8, color: '#374151' }}>
+                  模型萃取結果與 Ground Truth <Text strong>完全相同</Text>（逐字符比對）才算命中。
+                  計算方式：
+                </div>
+                <div style={{ margin: '8px 0', padding: '8px 12px', background: '#f5f5f5', borderRadius: 6, fontFamily: 'monospace', fontSize: 13 }}>
+                  完全一致率 = 完全一致筆數 / 總筆數 × 100%
+                </div>
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  適用欄位：姓名、性別、生日，容忍度為零。
+                </Text>
+              </div>
+
+              <div style={{ borderTop: '1px solid #f0f0f0', paddingTop: 12 }}>
+                <Text strong style={{ fontSize: 14, color: '#1677ff' }}>平均相似度（Jaccard Similarity）</Text>
+                <div style={{ marginTop: 6, fontSize: 13, lineHeight: 1.8, color: '#374151' }}>
+                  將萃取結果與 Ground Truth 各自拆成<Text strong>字符集合</Text>，計算交集佔聯集的比例。
+                  計算方式：
+                </div>
+                <div style={{ margin: '8px 0', padding: '8px 12px', background: '#f5f5f5', borderRadius: 6, fontFamily: 'monospace', fontSize: 13 }}>
+                  Jaccard = |A ∩ B| / |A ∪ B|
+                </div>
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  適用欄位：<Text strong>出生地</Text>。出生地描述形式多樣（如「臺北市」與「台北市北投區」），允許部分相符，對多餘或缺漏字符有容忍空間。
+                </Text>
+              </div>
+
+            </Space>
+          </Card>
+        </Col>
+      </Row>
 
       {/* ── 開始分析按鈕 ── */}
-      <Row justify="end">
+      <Row justify="start">
         <Col>
           <Button
             type="primary"
@@ -292,40 +465,100 @@ const AnalyzePage = () => {
       {result && !analyzing && (
         <Space direction="vertical" style={{ width: '100%' }} size="large">
 
-          {/* 整體統計 */}
+          {/* ── 萃取完整度 ── */}
+          {(() => {
+            const counts = result.model_extraction_counts || {}
+            const total = result.total_records
+
+            const extractData = result.model_names.map((norm: string) => {
+              const display = result.model_display_names[norm] || norm
+              const valid = counts[norm] ?? 0
+              return { model: display, 萃取人數: valid, _color: modelColorMap[norm] ?? colors[0] }
+            }).sort((a: any, b: any) => b['萃取人數'] - a['萃取人數'])
+
+            return (
+              <Card title="98篇法院判例中，各模型萃取出的被告人數">
+                <ResponsiveContainer width="100%" height={380}>
+                  <BarChart data={extractData} margin={{ top: 24, right: 24, left: 8, bottom: 8 }}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="model" tick={{ fontSize: 14 }} />
+                    <YAxis domain={[0, Math.ceil(total * 1.1)]} tick={{ fontSize: 14 }} />
+                    <ReTooltip
+                      formatter={(v: any) => [`${v} 筆 (${(v / total * 100).toFixed(1)}%)`, '萃取人數']}
+                    />
+                    <Legend wrapperStyle={{ fontSize: 13 }} />
+                    <Bar dataKey="萃取人數" radius={[4, 4, 0, 0]} name="萃取人數">
+                      {extractData.map((d: any, i: number) => (
+                        <Cell key={i} fill={d._color} />
+                      ))}
+                      <LabelList
+                        dataKey="萃取人數"
+                        position="inside"
+                        formatter={(v: any) => `${v} (${(v / total * 100).toFixed(1)}%)`}
+                        style={{ fontSize: 15, fill: '#000', fontWeight: 700 }}
+                      />
+                    </Bar>
+                    <ReferenceLine
+                      y={total}
+                      stroke="#003a8c"
+                      strokeDasharray="6 3"
+                      strokeWidth={2}
+                      label={{ value: `正確被告人數 ${total}`, position: 'insideTopRight', fill: '#003a8c', fontSize: 12, fontWeight: 600 }}
+                    />
+                  </BarChart>
+                </ResponsiveContainer>
+              </Card>
+            )
+          })()}
+
+          {/* 整體統計（預設收合） */}
           {overallStats && (
-            <Card title={<Space><CheckCircleOutlined style={{ color: '#00873e' }} /><span>整體準確度統計</span><Text type="secondary" style={{ fontSize: 13 }}>（共 {result.total_records} 筆記錄）</Text></Space>}>
-              <Row gutter={[16, 16]}>
-                {result.model_names.map((modelId: string) => (
-                  <Col xs={24} sm={12} key={modelId}>
-                    <Card size="small" style={{ background: '#f6ffed', border: '1px solid #b7eb8f' }}>
-                      <Text strong style={{ fontSize: 14, color: '#00873e', display: 'block', marginBottom: 12 }}>
-                        {result.model_display_names[modelId] || modelId}
-                      </Text>
-                      <Row gutter={16}>
-                        <Col span={12}>
-                          <Statistic
-                            title="平均完全一致率"
-                            value={overallStats[modelId].avgExactMatch}
-                            suffix="%"
-                            valueStyle={{ color: '#3f8600', fontSize: 28 }}
-                            prefix={<CheckCircleOutlined />}
-                          />
-                        </Col>
-                        <Col span={12}>
-                          <Statistic
-                            title="平均相似度"
-                            value={overallStats[modelId].avgSimilarity}
-                            suffix="%"
-                            valueStyle={{ fontSize: 28 }}
-                          />
-                        </Col>
-                      </Row>
-                    </Card>
-                  </Col>
-                ))}
-              </Row>
-            </Card>
+            <Collapse
+              ghost
+              style={{ background: '#fff', borderRadius: 8, border: '1px solid #f0f0f0' }}
+              items={[{
+                key: 'overall',
+                label: (
+                  <Space>
+                    <CheckCircleOutlined style={{ color: '#00873e' }} />
+                    <Text strong>整體準確度統計</Text>
+                    <Text type="secondary" style={{ fontSize: 13 }}>（共 {result.total_records} 筆記錄）</Text>
+                  </Space>
+                ),
+                children: (
+                  <Row gutter={[16, 16]}>
+                    {result.model_names.map((modelId: string) => (
+                      <Col xs={24} sm={12} key={modelId}>
+                        <Card size="small" style={{ background: '#f6ffed', border: '1px solid #b7eb8f' }}>
+                          <Text strong style={{ fontSize: 14, color: '#00873e', display: 'block', marginBottom: 12 }}>
+                            {result.model_display_names[modelId] || modelId}
+                          </Text>
+                          <Row gutter={16}>
+                            <Col span={12}>
+                              <Statistic
+                                title="平均完全一致率"
+                                value={overallStats[modelId].avgExactMatch}
+                                suffix="%"
+                                valueStyle={{ color: '#3f8600', fontSize: 28 }}
+                                prefix={<CheckCircleOutlined />}
+                              />
+                            </Col>
+                            <Col span={12}>
+                              <Statistic
+                                title="平均相似度"
+                                value={overallStats[modelId].avgSimilarity}
+                                suffix="%"
+                                valueStyle={{ fontSize: 28 }}
+                              />
+                            </Col>
+                          </Row>
+                        </Card>
+                      </Col>
+                    ))}
+                  </Row>
+                ),
+              }]}
+            />
           )}
 
           {/* 長條圖 */}
@@ -333,19 +566,19 @@ const AnalyzePage = () => {
             <ResponsiveContainer width="100%" height={380}>
               <BarChart data={chartData} margin={{ top: 8, right: 24, left: 8, bottom: 8 }}>
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="field" tick={{ fontSize: 13 }} />
+                <XAxis dataKey="field" tick={{ fontSize: 14 }} />
                 <YAxis
-                  label={{ value: '完全一致率 (%)', angle: -90, position: 'insideLeft', style: { fontSize: 12 } }}
+                  label={{ value: '完全一致率 (%)', angle: -90, position: 'insideLeft', style: { fontSize: 14 } }}
                   domain={[0, 100]}
-                  tick={{ fontSize: 12 }}
+                  tick={{ fontSize: 14 }}
                 />
                 <ReTooltip formatter={(value: any) => `${value}%`} />
                 <Legend wrapperStyle={{ fontSize: 13 }} />
-                {result.model_names.map((modelId: string, index: number) => (
+                {result.model_names.map((modelId: string) => (
                   <Bar
                     key={modelId}
                     dataKey={modelId}
-                    fill={colors[index % colors.length]}
+                    fill={modelColorMap[modelId]}
                     name={result.model_display_names[modelId] || modelId}
                     radius={[3, 3, 0, 0]}
                   />
@@ -384,6 +617,7 @@ const AnalyzePage = () => {
             const fieldData = result.accuracy_summary
               .filter((r: any) => r['欄位'] === selectedField)
               .map((r: any) => ({
+                normId: r['模型'],
                 model: result.model_display_names[r['模型']] || r['模型'],
                 平均相似度: parseFloat((r['平均相似度'] * 100).toFixed(2)),
                 完全一致率: parseFloat((r['完全一致率'] * 100).toFixed(2)),
@@ -393,8 +627,6 @@ const AnalyzePage = () => {
                 總筆數: r['總筆數'],
               }))
               .sort((a: any, b: any) => b['平均相似度'] - a['平均相似度'])
-
-            const COLORS = ['#66BB6A', '#FFB74D', '#64B5F6', '#F06292', '#BA68C8', '#4DB6AC', '#FF8A65']
 
             const rankCols = [
               { title: '排名', key: 'rank', width: 60, render: (_: any, __: any, i: number) => <Text strong>{i + 1}</Text> },
@@ -426,13 +658,13 @@ const AnalyzePage = () => {
                 <ResponsiveContainer width="100%" height={360}>
                   <BarChart data={fieldData} margin={{ top: 24, right: 24, left: 8, bottom: 8 }}>
                     <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="model" tick={{ fontSize: 12 }} />
-                    <YAxis domain={[0, 100]} tickFormatter={(v) => `${v}%`} tick={{ fontSize: 12 }} />
+                    <XAxis dataKey="model" tick={{ fontSize: 14 }} />
+                    <YAxis domain={[0, 100]} tickFormatter={(v) => `${v}%`} tick={{ fontSize: 14 }} />
                     <ReTooltip formatter={(v: any, name: string) => [`${v}%`, name]} />
                     <Legend wrapperStyle={{ fontSize: 13 }} />
                     <Bar dataKey="平均相似度" radius={[4, 4, 0, 0]} name="平均相似度">
-                      {fieldData.map((_: any, i: number) => (
-                        <Cell key={i} fill={COLORS[i % COLORS.length]} />
+                      {fieldData.map((d: any, i: number) => (
+                        <Cell key={i} fill={modelColorMap[d.normId] ?? colors[i % colors.length]} />
                       ))}
                       <LabelList dataKey="平均相似度" position="top" formatter={(v: any) => `${v}%`} style={{ fontSize: 12, fontWeight: 600 }} />
                     </Bar>
@@ -450,54 +682,22 @@ const AnalyzePage = () => {
             )
           })()}
 
-          {/* ── 圖表二：萃取完整度（成功筆數 vs 總筆數）── */}
-          {(() => {
-            const counts = result.model_extraction_counts || {}
-            const total = result.total_records
-            const COLORS = ['#66BB6A', '#FFB74D', '#64B5F6', '#F06292', '#BA68C8', '#4DB6AC', '#FF8A65']
-
-            const extractData = result.model_names.map((norm: string, i: number) => {
-              const display = result.model_display_names[norm] || norm
-              const valid = counts[norm] ?? 0
-              const missing = Math.max(0, total - valid)
-              return { model: display, 成功萃取: valid, 未萃取: missing, _color: COLORS[i % COLORS.length] }
-            }).sort((a: any, b: any) => b['成功萃取'] - a['成功萃取'])
-
-            return (
-              <Card title={`萃取完整度比較（Ground Truth 總筆數：${total}）`}>
-                <ResponsiveContainer width="100%" height={380}>
-                  <BarChart data={extractData} margin={{ top: 24, right: 24, left: 8, bottom: 8 }}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="model" tick={{ fontSize: 12 }} />
-                    <YAxis domain={[0, Math.ceil(total * 1.1)]} tick={{ fontSize: 12 }} />
-                    <ReTooltip
-                      formatter={(v: any, name: string) => [
-                        name === '成功萃取' ? `${v} 筆 (${(v / total * 100).toFixed(1)}%)` : `${v} 筆`,
-                        name,
-                      ]}
-                    />
-                    <Legend wrapperStyle={{ fontSize: 13 }} />
-                    <Bar dataKey="未萃取" stackId="a" fill="#e8e8e8" name="未萃取（缺少對應）" radius={[0, 0, 0, 0]} />
-                    <Bar dataKey="成功萃取" stackId="a" radius={[4, 4, 0, 0]} name="成功萃取">
-                      {extractData.map((d: any, i: number) => (
-                        <Cell key={i} fill={d._color} />
-                      ))}
-                      <LabelList
-                        dataKey="成功萃取"
-                        position="inside"
-                        formatter={(v: any) => `${v}\n(${(v / total * 100).toFixed(1)}%)`}
-                        style={{ fontSize: 12, fill: '#fff', fontWeight: 600 }}
-                      />
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              </Card>
-            )
-          })()}
-
         </Space>
       )}
     </Space>
+
+    <Modal
+      title="Prompt 內容"
+      open={promptModal.open}
+      onCancel={() => setPromptModal({ open: false, content: '' })}
+      footer={null}
+      width={680}
+    >
+      <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: 13, lineHeight: 1.7, maxHeight: 480, overflowY: 'auto', background: '#fafafa', padding: 16, borderRadius: 6, border: '1px solid #f0f0f0' }}>
+        {promptModal.content}
+      </pre>
+    </Modal>
+    </>
   )
 }
 

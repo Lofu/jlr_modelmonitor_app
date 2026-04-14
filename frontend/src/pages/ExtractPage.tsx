@@ -177,11 +177,18 @@ const ExtractPage = () => {
           message.success(`萃取完成！成功: ${data.success}, 失敗: ${data.errors}`)
           setLoading(false)
         } else if (data.type === 'error') {
-          message.error(`處理 ${data.file} 時發生錯誤`)
+          if (data.message) {
+            // 全局錯誤（背景任務失敗）
+            message.error(`萃取失敗: ${data.message}`)
+            setLoading(false)
+          } else {
+            message.error(`處理 ${data.file} 時發生錯誤`)
+          }
         }
       })
 
       await extractPdfs(extractRequest)
+      // API 立即返回 {"status":"started"}，實際完成由 WebSocket complete 事件處理
     } catch (error: any) {
       message.error(error.message || '萃取失敗')
       setLoading(false)

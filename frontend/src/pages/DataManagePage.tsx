@@ -10,7 +10,7 @@ import {
 } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import {
-  listBQRuns, getBQStatus, deleteBQRuns, clearGroundTruth,
+  listBQRuns, getBQStatus, deleteBQRuns, clearGroundTruth, clearExtractions,
   getRunExtractions, getAllExtractions, getGroundTruthRows, type BQRun, type BQStatus,
 } from '../services/api'
 import dayjs from 'dayjs'
@@ -145,17 +145,17 @@ const RunsTab = ({ onRunsChange }: { onRunsChange: () => void }) => {
     {
       title: '操作',
       key: 'actions',
-      width: 140,
+      width: 80,
       render: (_, r) => (
-        <Space>
-          <Button
-            type="link"
-            size="small"
-            icon={<EyeOutlined />}
-            onClick={() => openDrawer(r)}
-          >
-            明細
-          </Button>
+        <Space size={4}>
+          <Tooltip title="查看明細">
+            <Button
+              type="text"
+              size="small"
+              icon={<EyeOutlined />}
+              onClick={() => openDrawer(r)}
+            />
+          </Tooltip>
           <Popconfirm
             title="確定刪除這筆執行紀錄？"
             description="將同時刪除此 run 的所有萃取結果，無法復原。"
@@ -164,15 +164,15 @@ const RunsTab = ({ onRunsChange }: { onRunsChange: () => void }) => {
             cancelText="取消"
             onConfirm={() => handleDelete([r.run_id])}
           >
-            <Button
-              type="link"
-              danger
-              size="small"
-              icon={<DeleteOutlined />}
-              loading={deletingIds.includes(r.run_id)}
-            >
-              刪除
-            </Button>
+            <Tooltip title="刪除">
+              <Button
+                type="text"
+                danger
+                size="small"
+                icon={<DeleteOutlined />}
+                loading={deletingIds.includes(r.run_id)}
+              />
+            </Tooltip>
           </Popconfirm>
         </Space>
       ),
@@ -251,6 +251,7 @@ const RunsTab = ({ onRunsChange }: { onRunsChange: () => void }) => {
           rowKey="run_id"
           loading={loading}
           size="small"
+          scroll={{ x: 'max-content' }}
           rowSelection={{
             selectedRowKeys: selectedKeys,
             onChange: (keys) => setSelectedKeys(keys as string[]),
@@ -457,9 +458,10 @@ const GroundTruthTab = ({ onChange }: { onChange: () => void }) => {
 // ============================================================================
 // Extractions 瀏覽 Tab
 // ============================================================================
-const ExtractionsTab = ({ totalRows }: { totalRows: number }) => {
+const ExtractionsTab = ({ totalRows, onCleared }: { totalRows: number; onCleared: () => void }) => {
   const [rows, setRows] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
+  const [clearing, setClearing] = useState(false)
   const [modelFilter, setModelFilter] = useState<string | undefined>(undefined)
   const [search, setSearch] = useState('')
 
@@ -473,6 +475,20 @@ const ExtractionsTab = ({ totalRows }: { totalRows: number }) => {
       message.error('載入 Extractions 失敗')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleClearExtractions = async () => {
+    try {
+      setClearing(true)
+      await clearExtractions()
+      message.success('Extractions 表已清空')
+      setRows([])
+      onCleared()
+    } catch {
+      message.error('清空失敗')
+    } finally {
+      setClearing(false)
     }
   }
 
@@ -557,6 +573,18 @@ const ExtractionsTab = ({ totalRows }: { totalRows: number }) => {
             <Button icon={<ReloadOutlined />} onClick={loadRows} loading={loading}>
               重新整理
             </Button>
+            <Popconfirm
+              title="清空 Extractions 表"
+              description="確定要刪除所有萃取結果嗎？此操作無法復原。"
+              onConfirm={handleClearExtractions}
+              okText="確定清空"
+              cancelText="取消"
+              okButtonProps={{ danger: true }}
+            >
+              <Button icon={<ClearOutlined />} danger loading={clearing}>
+                清空 Extractions
+              </Button>
+            </Popconfirm>
           </Space>
         </Col>
       </Row>
@@ -684,6 +712,7 @@ const DataManagePage = () => {
                 children: (
                   <ExtractionsTab
                     totalRows={status?.tables['extractions']?.rows ?? 0}
+                    onCleared={loadStatus}
                   />
                 ),
               },

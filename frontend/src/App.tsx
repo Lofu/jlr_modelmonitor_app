@@ -23,12 +23,12 @@ function App() {
     {
       key: '/extract',
       icon: <FileTextOutlined />,
-      label: 'PDF 萃取',
+      label: '文檔萃取',
     },
     {
       key: '/analyze',
       icon: <BarChartOutlined />,
-      label: '準確度分析',
+      label: '模型評估分析',
     },
     {
       key: '/files',
@@ -57,6 +57,8 @@ function App() {
           Layout: {
             headerBg: 'rgba(255, 255, 255, 0.85)',
             siderBg: 'rgba(255, 255, 255, 0.75)',
+            triggerBg: 'rgba(0, 135, 62, 0.04)',
+            triggerColor: '#00873e',
           },
           Menu: {
             itemBg: 'transparent',
@@ -129,43 +131,22 @@ function App() {
             backdropFilter: 'blur(16px)',
           }}
         >
-          {/* 側邊欄 Header - 仿國泰樹形 Logo */}
+          {/* 側邊欄 Header */}
           <div style={{
-            height: '64px',
             margin: '12px 10px 4px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: collapsed ? 'center' : 'flex-start',
-            transition: 'all 0.3s',
-            overflow: 'hidden',
             borderBottom: '1px solid rgba(0, 135, 62, 0.1)',
             paddingBottom: '12px',
+            overflow: 'hidden',
+            transition: 'all 0.3s',
           }}>
-            {/* 樹形 SVG */}
-            <svg
-              width={collapsed ? 32 : 36}
-              height={collapsed ? 32 : 36}
-              viewBox="0 0 48 52"
-              fill="none"
-              xmlns="http://www.w3.org/2000/svg"
-              style={{ flexShrink: 0, marginRight: collapsed ? 0 : '10px', transition: 'all 0.3s' }}
-            >
-              {/* 樹幹 */}
-              <rect x="20" y="38" width="8" height="12" rx="3" fill="#00873e" />
-              {/* 樹冠底層（最大） */}
-              <ellipse cx="24" cy="30" rx="18" ry="13" fill="#00a651" />
-              {/* 樹冠中層 */}
-              <ellipse cx="24" cy="22" rx="14" ry="11" fill="#00873e" />
-              {/* 樹冠頂層（最小、最深） */}
-              <ellipse cx="24" cy="15" rx="9" ry="8" fill="#006830" />
-              {/* 高光 */}
-              <ellipse cx="20" cy="12" rx="4" ry="3" fill="rgba(255,255,255,0.15)" />
-            </svg>
-
-            {!collapsed && (
-              <div style={{ overflow: 'hidden' }}>
-                <div style={{ whiteSpace: 'nowrap', fontSize: '15px', fontWeight: 800, color: '#111827', letterSpacing: '-0.3px', lineHeight: 1.25 }}>法院判例評估</div>
-                <div style={{ whiteSpace: 'nowrap', fontSize: '10.5px', fontWeight: 400, color: '#6b7280', letterSpacing: '0.5px', marginTop: '2px' }}>Model Monitor</div>
+            {!collapsed ? (
+              <>
+                <div style={{ fontSize: '18px', fontWeight: 800, color: '#111827', letterSpacing: '-0.3px', lineHeight: 1.3, textAlign: 'center' }}>法院判例模型評估</div>
+                <div style={{ fontSize: '13px', fontWeight: 400, color: '#6b7280', letterSpacing: '0.5px', marginTop: '2px', textAlign: 'center' }}>Model Monitor</div>
+              </>
+            ) : (
+              <div style={{ display: 'flex', justifyContent: 'center', padding: '4px 0' }}>
+                <div style={{ fontSize: '13px', fontWeight: 800, color: '#111827', textAlign: 'center', lineHeight: 1.3 }}>評估</div>
               </div>
             )}
           </div>
@@ -177,6 +158,24 @@ function App() {
             onClick={({ key }) => navigate(key)}
             style={{ background: 'transparent', border: 'none' }}
           />
+
+          {/* 側邊欄底部 Logo */}
+          {!collapsed && (
+            <div style={{
+              position: 'absolute',
+              bottom: 48,
+              left: 0,
+              right: 0,
+              padding: '12px 16px',
+              borderTop: '1px solid rgba(0, 135, 62, 0.1)',
+            }}>
+              <img
+                src="/cathay-logo.jpg"
+                alt="國泰世華銀行"
+                style={{ width: '100%', objectFit: 'contain', display: 'block' }}
+              />
+            </div>
+          )}
         </Sider>
         <Layout style={{
           marginLeft: collapsed ? 80 : 220,
