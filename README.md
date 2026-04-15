@@ -31,8 +31,7 @@ ModelChange_Monitor_react/
 │   └── outputs/                 # 萃取原始 JSONL 輸出
 ├── samplepdflist/               # 越南法院判例 PDF（98 篇）
 ├── start-all.sh                 # 使用 tmux 同時啟動前後端
-├── requirements.txt             # Python 依賴（Streamlit 舊版用，保留）
-└── requirements-api.txt         # FastAPI 後端依賴
+└── requirements-api.txt         # Python 後端依賴
 ```
 
 ### 前端
