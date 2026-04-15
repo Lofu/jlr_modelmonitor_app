@@ -1,338 +1,195 @@
-# 📊 LLM 萃取準確度監控 Dashboard
+# 法院判例 LLM 模型評估系統
 
-一個用於監控多個 LLM 模型（Gemini、Claude）在越南法院判決 PDF 文件結構化萃取準確度的互動式 Dashboard。
-
-## ✨ 功能特色
-
-### 🎯 核心功能
-
-1. **自動化 PDF 萃取**
-   - 支援多種 LLM 模型（Gemini 2.0 Flash、Gemini 1.5 Pro、Claude Sonnet 4.5、Gemini 3.1 Pro Preview）
-   - 批次處理本地 PDF 檔案
-   - 即時顯示萃取進度
-   - 自動儲存為 CSV 和 JSONL 格式
-
-2. **準確度分析**
-   - 與基準資料（NotebookLM）比對
-   - 計算多種相似度指標（精確匹配、年份匹配、Jaccard 相似度）
-   - 分析欄位：姓名、性別、生日、生日年份、出生地
-
-3. **視覺化呈現**
-   - 互動式圖表（完全一致率比較、模型匹配情況）
-   - 即時統計摘要
-   - 可下載分析結果
-
-4. **檔案管理**
-   - 查看已萃取的結果
-   - 刪除舊檔案
-   - 檢視系統狀態
-
-### 🏗️ 技術架構
-
-```
-專案結構：
-ModelChange_Monitor/
-├── app.py                              # Streamlit 主程式
-├── dashboard/                          # 核心模組
-│   ├── __init__.py
-│   ├── config.py                       # 配置檔（模型、路徑、Prompt）
-│   ├── extractor.py                    # PDF 萃取模組
-│   └── analyzer.py                     # 準確度分析模組
-├── samplepdflist/                      # PDF 原始檔案資料夾
-├── outputs/                            # JSONL 輸出資料夾
-├── 法院判例GroudTH - 工作表1.csv       # NotebookLM 基準資料
-├── *_extract_v1.0.csv                  # 模型萃取結果
-├── requirements.txt                    # Python 相依套件
-└── README.md                           # 本檔案
-```
-
-### 💡 為什麼需要後端？
-
-雖然不需要資料庫，但仍需要輕量級後端（Streamlit），原因如下：
-
-1. **Vertex AI API 呼叫**：需要 GCP 憑證，不能暴露在瀏覽器前端
-2. **PDF 處理**：pypdf 是 Python 套件，瀏覽器無法執行
-3. **檔案系統操作**：讀寫 CSV/JSONL 檔案
-4. **大量計算**：相似度分析適合在伺服器端進行
-
-### 🗄️ 資料儲存策略（無資料庫）
-
-- **基準資料**：`法院判例GroudTH - 工作表1.csv`
-- **萃取結果**：`{模型名稱}_extract_v1.0.csv`
-- **原始輸出**：`outputs/{模型名稱}_extract_v1.0.jsonl`
-- **檔案命名標準化**：由 `config.py` 統一管理
+用於評估多個 LLM 模型（Gemini、Claude）在越南法院判決 PDF 結構化萃取任務上的準確度，並透過互動式 Dashboard 進行視覺化比較分析。
 
 ---
 
-## 🚀 快速開始
+## 技術架構
 
-### 1. 環境需求
+```
+ModelChange_Monitor_react/
+├── api/
+│   └── main.py                  # FastAPI 後端（port 8000）
+├── dashboard/
+│   ├── config.py                # 模型配置、路徑、Prompt、分析欄位
+│   ├── extractor.py             # PDF 萃取模組（呼叫 Vertex AI）
+│   ├── analyzer.py              # 準確度分析模組
+│   └── bq_client.py             # BigQuery 讀寫模組
+├── frontend/
+│   └── src/
+│       ├── App.tsx              # 主應用（Ant Design Layout + 路由）
+│       ├── pages/
+│       │   ├── ExtractPage.tsx      # PDF 萃取
+│       │   ├── AnalyzePage.tsx      # 準確度分析
+│       │   ├── FilesPage.tsx        # 萃取結果檔案管理
+│       │   └── DataManagePage.tsx   # BigQuery 執行紀錄管理
+│       └── services/
+│           └── api.ts               # 前端 API 呼叫封裝
+├── data/
+│   ├── extracts/                # 萃取結果 CSV
+│   ├── ground_truth/            # 正確答案 CSV（ground_truth.csv）
+│   └── outputs/                 # 萃取原始 JSONL 輸出
+├── samplepdflist/               # 越南法院判例 PDF（98 篇）
+├── start-all.sh                 # 使用 tmux 同時啟動前後端
+├── start-backend.sh             # 單獨啟動後端
+├── start-frontend.sh            # 單獨啟動前端
+├── requirements.txt             # Python 依賴（Streamlit 舊版用，保留）
+└── requirements-api.txt         # FastAPI 後端依賴
+```
 
-- Python 3.9+
-- GCP 專案（已啟用 Vertex AI API）
-- GCP 認證憑證
+### 前端
+- **React 18 + TypeScript**，使用 Vite 建置
+- **Ant Design 5** 元件庫
+- **Recharts** 圖表呈現
 
-### 2. 安裝相依套件
+### 後端
+- **FastAPI**，提供 RESTful API
+- **Vertex AI** 呼叫 Gemini / Claude 模型進行 PDF 萃取
+- **BigQuery** 儲存執行紀錄與萃取結果（dataset: `jlr_model_monitor`）
+
+### BigQuery 資料表
+| 資料表 | 說明 |
+|--------|------|
+| `extraction_runs` | 每次萃取任務的執行紀錄（模型、Prompt、時間等） |
+| `extractions` | 各 PDF 的萃取結果（與 run_id 關聯） |
+| `ground_truth` | 正確答案資料 |
+
+---
+
+## 功能頁面
+
+### 1. PDF 萃取（ExtractPage）
+- 設定模型 ID、provider（gemini / claude）、GCP location
+- 自訂 Prompt（可查看目前使用的完整 Prompt）
+- 批次萃取 `samplepdflist/` 中的 PDF，即時顯示進度
+- 結果同時儲存為 CSV（`data/extracts/`）、JSONL（`data/outputs/`）並寫入 BigQuery
+
+### 2. 準確度分析（AnalyzePage）
+- 從已完成的執行紀錄選取分析對象（支援多模型、同模型不同 Prompt）
+- 圖表一：各模型萃取被告人數（含正確人數 224 基準線）
+- 圖表二：指定欄位的完全一致率比較
+- 圖表三：各欄位平均相似度排名
+- 詳細準確度數據表（群組標題：模型 → 完全一致率 / 平均相似度 / 成功總數）
+- Ground Truth 資料預覽
+
+**評估欄位與方法：**
+| 欄位 | 方法 |
+|------|------|
+| 姓名（NAME） | 精確匹配 |
+| 性別（SEX） | 精確匹配 |
+| 生日（DATE_OF_BIRTH） | 精確匹配 |
+| 生日年份（DATE_OF_BIRTH_YEAR） | 年份匹配 |
+| 出生地（PLACE_OF_BIRTH） | Jaccard 相似度（3-gram） |
+
+### 3. 檔案管理（FilesPage）
+- 查看 `data/extracts/` 中的萃取 CSV
+- 下載、匯入至 BigQuery、刪除
+
+### 4. 執行紀錄管理（DataManagePage）
+- 查看 BigQuery 中的執行紀錄（`extraction_runs`）
+- 刪除指定執行紀錄（同步刪除 `extractions` 中的對應資料）
+
+---
+
+## 環境需求
+
+- Python 3.11+
+- Node.js 18+
+- GCP 專案（已啟用 Vertex AI API、BigQuery API）
+- Google ADC（Application Default Credentials）
+
+---
+
+## 安裝與啟動
+
+### 1. 安裝依賴
 
 ```bash
-cd ModelChange_Monitor
-pip install -r requirements.txt
+# 後端
+source .venv/bin/activate
+pip install -r requirements-api.txt
+
+# 前端
+cd frontend
+npm install
+cd ..
 ```
 
-### 3. GCP 認證設定
-
-#### 方法 A：使用 Service Account Key（推薦）
-
-```bash
-# 下載 Service Account JSON 金鑰檔
-# 設定環境變數
-export GOOGLE_APPLICATION_CREDENTIALS="/path/to/your-service-account-key.json"
-```
-
-#### 方法 B：使用 gcloud CLI
-
-```bash
-gcloud auth application-default login
-gcloud config set project cdcda-lab-377808
-```
-
-### 4. 準備資料
-
-確保以下檔案存在：
-
-```
-samplepdflist/                # PDF 檔案（例如：2ta1032586t1cvn.pdf）
-法院判例GroudTH - 工作表1.csv  # NotebookLM 基準資料
-```
-
-### 5. 啟動 Dashboard
-
-```bash
-streamlit run app.py
-```
-
-瀏覽器會自動開啟 `http://localhost:8501`
-
----
-
-## 📖 使用說明
-
-### 步驟 1：選擇模型
-
-在左側邊欄選擇要使用的 LLM 模型（可多選）：
-
-- ✅ Gemini 2.0 Flash
-- ✅ Gemini 1.5 Pro
-- ✅ Claude Sonnet 4.5
-- ✅ Gemini 3.1 Pro Preview
-
-### 步驟 2：PDF 萃取
-
-1. 切換到「**📄 PDF 萃取**」頁面
-2. 檢查 PDF 檔案列表
-3. 查看已存在的萃取結果（如果有）
-4. 點擊「**🚀 開始萃取**」按鈕
-5. 等待萃取完成（會顯示即時進度）
-
-⚠️ **注意**：萃取會覆蓋現有結果
-
-### 步驟 3：準確度分析
-
-1. 切換到「**📈 準確度分析**」頁面
-2. 確認已載入基準資料
-3. 點擊「**🔍 開始分析**」按鈕
-4. 查看分析結果：
-   - 📋 準確度摘要表
-   - 📊 完全一致率比較圖
-   - 📈 模型匹配情況圖
-5. 下載分析結果 CSV
-
-### 步驟 4：檔案管理
-
-1. 切換到「**📦 檔案管理**」頁面
-2. 查看所有已萃取的結果
-3. 刪除不需要的檔案（點擊 🗑️ 按鈕）
-
----
-
-## 🔧 配置說明
-
-### 修改模型配置
-
-編輯 [dashboard/config.py](dashboard/config.py)：
-
-```python
-AVAILABLE_MODELS = {
-    "gemini-2.0-flash-001": ModelConfig(
-        model_id="gemini-2.0-flash-001",
-        display_name="Gemini 2.0 Flash",
-        provider="gemini",
-        location="global",
-        output_prefix="Gemini_2_0_flash"
-    ),
-    # 添加新模型...
-}
-```
-
-### 修改 Prompt
-
-編輯 [dashboard/config.py](dashboard/config.py) 中的 `SYSTEM_PROMPT` 變數。
-
-### 修改分析欄位
-
-編輯 [dashboard/config.py](dashboard/config.py)：
-
-```python
-ANALYSIS_FIELDS = {
-    'NAME': {'method': 'exact_match', 'display_name': '姓名'},
-    'SEX': {'method': 'exact_match', 'display_name': '性別'},
-    # 添加新欄位...
-}
-```
-
----
-
-## 📊 準確度計算方法
-
-### 1. 精確匹配 (Exact Match)
-
-用於：**NAME**、**SEX**、**DATE_OF_BIRTH**
-
-- 完全相同 → 1.0
-- 不同 → 0.0
-- 雙方都是空值 → 1.0
-
-### 2. 年份匹配 (Year Match)
-
-用於：**DATE_OF_BIRTH_YEAR**
-
-特殊規則：
-- `1992` 與 `1992-01-01` → 視為相同 ✅
-- `1992` 與 `1992-05-15` → 視為不同 ❌
-- 只比對年份，忽略月日
-
-### 3. Jaccard 相似度 (3-gram)
-
-用於：**PLACE_OF_BIRTH**
-
-- 使用 3-gram 字元切割
-- 計算交集 / 聯集
-- 範圍：0.0（完全不同）～ 1.0（完全相同）
-- 「未提及」視為空值，不納入計算
-
----
-
-## 🎨 範例輸出
-
-### 萃取結果 CSV
-
-| CASE_LINK | NAME | SEX | DATE_OF_BIRTH | PLACE_OF_BIRTH | ... |
-|-----------|------|-----|---------------|----------------|-----|
-| https://... | Nguyễn Văn A | 1 | 1992-01-01 | Hà Nội | ... |
-
-### 準確度摘要表
-
-| 模型 | 欄位 | 平均相似度 | 完全一致率 | 完全一致數 | 總筆數 |
-|------|------|-----------|-----------|-----------|--------|
-| Gemini_2_0_flash | NAME | 0.906 | 0.906 | 203 | 224 |
-| Claude_Sonnet_4_5 | SEX | 0.987 | 0.987 | 221 | 224 |
-
----
-
-## ⚠️ 注意事項
-
-### 成本控制
-
-- Vertex AI API 會產生費用
-- 每個 PDF 約 5-10 秒（視模型而定）
-- 建議先用少量 PDF 測試
-
-### 錯誤處理
-
-- PDF 解析失敗會記錄到 `*_errors.jsonl`
-- 檢查 `outputs/` 資料夾中的錯誤記錄
-
-### 檔案覆蓋
-
-- **按下萃取按鈕會覆蓋現有結果**
-- 建議重要結果先備份或改檔名
-
----
-
-## 🐛 常見問題
-
-### Q1: 無法連接到 Vertex AI
-
-**A**: 檢查 GCP 認證：
+### 2. GCP 認證
 
 ```bash
 gcloud auth application-default login
-gcloud config set project cdcda-lab-377808
 ```
 
-### Q2: 找不到 PDF 檔案
+### 3. 啟動應用
 
-**A**: 確認 PDF 檔案在 `samplepdflist/` 資料夾中
-
-### Q3: 分析時顯示「尚未萃取」
-
-**A**: 請先在「PDF 萃取」頁面執行萃取
-
-### Q4: 中文字型無法顯示
-
-**A**: 安裝字型：
-
+**方式一：使用 tmux 同時啟動（推薦）**
 ```bash
-# macOS
-brew install font-microsoft-yahei
-
-# Ubuntu
-sudo apt-get install fonts-wqy-zenhei
+./start-all.sh
 ```
 
+**方式二：分視窗啟動**
+```bash
+# 終端 1
+./start-backend.sh
+
+# 終端 2
+./start-frontend.sh
+```
+
+### 4. 訪問
+
+| 服務 | 網址 |
+|------|------|
+| 前端 Dashboard | http://localhost:5173 |
+| 後端 API | http://localhost:8000 |
+| API 文件（Swagger） | http://localhost:8000/docs |
+
 ---
 
-## 🔄 未來優化方向
+## 新增模型
 
-- [ ] 支援從 GCS 直接下載 PDF
-- [ ] 新增更多分析指標（F1 Score、Precision、Recall）
-- [ ] 支援匯出 PDF 報告
-- [ ] 新增模型效能比較（速度、成本）
-- [ ] 支援自訂 Prompt 測試
+在 [dashboard/config.py](dashboard/config.py) 的 `REFERENCE_MODELS` 中新增條目（僅供參考）：
+
+```python
+"gemini-2.5-flash": {
+    "provider": "gemini",
+    "location": "us-central1",
+    "display_name": "Gemini 2.5 Flash"
+}
+```
+
+模型 ID 可在萃取頁面的表單中直接輸入，不限於 `REFERENCE_MODELS` 清單。
 
 ---
 
-## 📝 版本歷史
+## 常見問題
+
+**Q: 分析時出現 NA 值或圖表缺失**
+A: 確認執行萃取時使用的模型 ID 與執行紀錄一致。同一模型使用不同 Prompt 時，系統會自動以 prompt hash 區分，兩者可獨立或合併分析。
+
+**Q: 無法連接 Vertex AI**
+A: 重新執行 `gcloud auth application-default login` 更新 ADC 憑證。
+
+**Q: BigQuery 寫入失敗**
+A: 確認 GCP Project（`config.py` 中的 `GCP_PROJECT`）有 BigQuery 寫入權限，且 dataset `jlr_model_monitor` 已建立。
+
+---
+
+## 版本歷史
+
+### v2.0.0 (2026-04-15)
+- 全面重構為 React + FastAPI 架構（取代原 Streamlit 版本）
+- 整合 BigQuery 儲存執行紀錄
+- 支援同模型多 Prompt 獨立分析
+- 準確度分析頁面大幅優化（群組表頭、一致配色、多圖表）
+- 操作說明頁面（FilesPage、DataManagePage）按鈕 icon-only 優化
 
 ### v1.0.0 (2026-04-08)
-
-- ✅ 初始版本
-- ✅ 支援 4 種 LLM 模型
-- ✅ PDF 批次萃取功能
-- ✅ 準確度分析與視覺化
-- ✅ 檔案管理功能
+- 初始 Streamlit 版本
+- 支援 4 種 LLM 模型 PDF 萃取
+- 基礎準確度分析與視覺化
 
 ---
 
-## 👨‍💻 開發者
-
-**CDC 資料科學團隊**
-
----
-
-## 📄 授權
-
-內部使用專案
-
----
-
-## 🙏 致謝
-
-- Google Vertex AI
-- Streamlit
-- pypdf
-- pandas & matplotlib
-
----
-
-**Happy Monitoring! 📊✨**
+**CDC 資料科學團隊 · 內部使用專案**
