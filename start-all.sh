@@ -50,11 +50,18 @@ elif command -v screen &> /dev/null; then
     bash start-frontend.sh
     
 else
-    echo "⚠️  建議安裝 tmux 或 screen 以便同時查看前後端日誌"
-    echo "您可以執行：brew install tmux"
+    echo "⚠️  建議安裝 tmux 以便同時查看前後端日誌：brew install tmux"
     echo ""
-    echo "目前將依序啟動後端和前端..."
-    echo "請在另一個終端視窗執行："
-    echo "  ./start-backend.sh  # 啟動後端"
-    echo "  ./start-frontend.sh # 啟動前端"
+    echo "以背景模式啟動後端，前端在前景執行..."
+    echo ""
+
+    # 後端背景啟動
+    source .venv/bin/activate
+    cd api && python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload &
+    BACKEND_PID=$!
+    cd ..
+    echo "後端已啟動 (PID: $BACKEND_PID)"
+
+    # 前端前景啟動
+    cd frontend && npm run dev
 fi
