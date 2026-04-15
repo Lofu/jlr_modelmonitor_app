@@ -42,12 +42,16 @@ if command -v tmux &> /dev/null; then
     
 elif command -v screen &> /dev/null; then
     echo "使用 screen 同時啟動前後端..."
-    
-    # 啟動後端（背景執行）
-    screen -dmS llm-backend bash start-backend.sh
-    
-    # 啟動前端
-    bash start-frontend.sh
+
+    # 後端背景啟動
+    source .venv/bin/activate
+    cd api && python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload &
+    BACKEND_PID=$!
+    cd ..
+    echo "後端已啟動 (PID: $BACKEND_PID)"
+
+    # 前端前景啟動
+    cd frontend && npm run dev
     
 else
     echo "⚠️  建議安裝 tmux 以便同時查看前後端日誌：brew install tmux"
