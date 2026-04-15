@@ -203,7 +203,7 @@ const ExtractPage = () => {
 
   return (
     <div>
-      <Card title={<Space><RocketOutlined /><span>PDF 檔案萃取</span></Space>}>
+      <Card title="PDF 檔案萃取">
 
         {/* 系統資訊 */}
         {config && (
@@ -384,7 +384,6 @@ const ExtractPage = () => {
                 htmlType="submit"
                 size="large"
                 loading={loading}
-                icon={<RocketOutlined />}
                 disabled={loading || selectedPdfFiles.length === 0}
                 style={{
                   background: loading ? undefined : 'linear-gradient(135deg, #00873e 0%, #00a651 100%)',

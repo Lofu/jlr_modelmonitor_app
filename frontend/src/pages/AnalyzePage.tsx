@@ -32,6 +32,31 @@ import dayjs from 'dayjs'
 
 const { Text } = Typography
 
+/**
+ * 將各種格式的 model_id 轉成易讀的顯示名稱
+ * 例：
+ *   "Claude_Sonnet_4_6"                    → "Claude Sonnet 4.6"
+ *   "claude-sonnet-4-6"                    → "Claude Sonnet 4.6"
+ *   "gemini-2.0-flash-001_extract_v1.0_part1" → "Gemini 2.0 Flash 001"
+ *   "gemini-2.5-flash (b1511df5)"          → "Gemini 2.5 Flash (b1511df5)"
+ */
+const formatModelId = (modelId: string): string => {
+  if (!modelId) return modelId
+  // 保留末尾 prompt hash "(xxxxxxxx)"
+  const hashMatch = modelId.match(/^(.+?)\s*\(([a-f0-9]+)\)$/)
+  const basePart = hashMatch ? hashMatch[1].trim() : modelId
+  const hashSuffix = hashMatch ? ` (${hashMatch[2]})` : ''
+  // 移除檔名後綴 _extract_v1.0_part1 等
+  let name = basePart.replace(/_extract_v[\d.]+(_part\d+)?$/i, '')
+  // _ 和 - 全部換成空格
+  name = name.replace(/[_-]/g, ' ')
+  // 合併連續數字中間的空格：「4 6」→「4.6」
+  name = name.replace(/\b(\d) (\d)\b/g, '$1.$2')
+  // 每個單字首字大寫
+  name = name.split(/\s+/).filter(Boolean).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
+  return name + hashSuffix
+}
+
 const getProviderTag = (provider: string) => {
   const p = provider?.toLowerCase() || ''
   if (p === 'gemini') return <Tag color="blue">Gemini</Tag>
@@ -145,7 +170,7 @@ const AnalyzePage = () => {
     ...(result?.model_names || []).map((modelId: string) => ({
       title: (
         <span style={{ fontWeight: 700, fontSize: 13 }}>
-          {result?.model_display_names?.[modelId] || modelId}
+          {formatModelId(result?.model_display_names?.[modelId] || modelId)}
         </span>
       ),
       key: modelId,
@@ -298,7 +323,7 @@ const AnalyzePage = () => {
                     <Col flex="auto">
                       <Space size={8}>
                         {getProviderTag(mg.provider)}
-                        <Text strong style={{ fontSize: 14 }}>{mg.model_id}</Text>
+                        <Text strong style={{ fontSize: 14 }}>{formatModelId(mg.model_id)}</Text>
                         <Text type="secondary" style={{ fontSize: 12 }}>
                           {mg.cases.length} 種 Prompt
                         </Text>
@@ -471,7 +496,7 @@ const AnalyzePage = () => {
             const total = result.total_records
 
             const extractData = result.model_names.map((norm: string) => {
-              const display = result.model_display_names[norm] || norm
+              const display = formatModelId(result.model_display_names[norm] || norm)
               const valid = counts[norm] ?? 0
               return { model: display, 萃取人數: valid, _color: modelColorMap[norm] ?? colors[0] }
             }).sort((a: any, b: any) => b['萃取人數'] - a['萃取人數'])
@@ -531,7 +556,7 @@ const AnalyzePage = () => {
                       <Col xs={24} sm={12} key={modelId}>
                         <Card size="small" style={{ background: '#f6ffed', border: '1px solid #b7eb8f' }}>
                           <Text strong style={{ fontSize: 14, color: '#00873e', display: 'block', marginBottom: 12 }}>
-                            {result.model_display_names[modelId] || modelId}
+                            {formatModelId(result.model_display_names[modelId] || modelId)}
                           </Text>
                           <Row gutter={16}>
                             <Col span={12}>
@@ -562,7 +587,7 @@ const AnalyzePage = () => {
           )}
 
           {/* 長條圖 */}
-          <Card title="各欄位準確度比較（完全一致率）">
+          <Card title={<span>各欄位準確度比較（完全一致率）<span style={{ fontWeight: 400, fontSize: 13, color: '#000', marginLeft: 8 }}>224位被告人在各模型萃取結果完全一致佔比</span></span>}>
             <ResponsiveContainer width="100%" height={380}>
               <BarChart data={chartData} margin={{ top: 8, right: 24, left: 8, bottom: 8 }}>
                 <CartesianGrid strokeDasharray="3 3" />
@@ -579,7 +604,7 @@ const AnalyzePage = () => {
                     key={modelId}
                     dataKey={modelId}
                     fill={modelColorMap[modelId]}
-                    name={result.model_display_names[modelId] || modelId}
+                    name={formatModelId(result.model_display_names[modelId] || modelId)}
                     radius={[3, 3, 0, 0]}
                   />
                 ))}
@@ -618,7 +643,7 @@ const AnalyzePage = () => {
               .filter((r: any) => r['欄位'] === selectedField)
               .map((r: any) => ({
                 normId: r['模型'],
-                model: result.model_display_names[r['模型']] || r['模型'],
+                model: formatModelId(result.model_display_names[r['模型']] || r['模型']),
                 平均相似度: parseFloat((r['平均相似度'] * 100).toFixed(2)),
                 完全一致率: parseFloat((r['完全一致率'] * 100).toFixed(2)),
                 中位數相似度: parseFloat((r['中位數相似度'] * 100).toFixed(2)),

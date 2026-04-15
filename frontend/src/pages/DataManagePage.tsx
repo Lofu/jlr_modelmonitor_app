@@ -2,11 +2,11 @@ import { useState, useEffect } from 'react'
 import {
   Card, Table, Button, Space, Popconfirm, message, Tag,
   Typography, Tabs, Row, Col, Statistic, Drawer, Alert,
-  Badge, Select, Input, Tooltip, Modal,
+  Badge, Input, Tooltip, Modal,
 } from 'antd'
 import {
   DeleteOutlined, ReloadOutlined, EyeOutlined,
-  DatabaseOutlined, ClearOutlined, TableOutlined, ExpandAltOutlined,
+  DatabaseOutlined, ClearOutlined, TableOutlined, ExpandAltOutlined, SearchOutlined,
 } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import {
@@ -327,12 +327,12 @@ const RunsTab = ({ onRunsChange }: { onRunsChange: () => void }) => {
 
             <Table
               title={() => <Text strong>萃取明細（{extractions.length} 筆）</Text>}
-              columns={extractionCols}
+              columns={wrapHeader(extractionCols)}
               dataSource={extractions}
               rowKey={(r, i) => `${r.run_id}-${r.doc_id}-${i}`}
               loading={extractLoading}
               size="small"
-              scroll={{ x: 1400 }}
+              scroll={{ x: 'max-content' }}
               pagination={{ pageSize: 10, showSizeChanger: true, pageSizeOptions: ['10', '20', '50'], showTotal: (n) => `共 ${n} 筆` }}
             />
           </Space>
@@ -458,19 +458,53 @@ const GroundTruthTab = ({ onChange }: { onChange: () => void }) => {
 // ============================================================================
 // Extractions 瀏覽 Tab
 // ============================================================================
+
+/** 讓欄位標題不被截斷（強制 nowrap，欄寬自動撐開） */
+const wrapHeader = <T,>(cols: ColumnsType<T>): ColumnsType<T> =>
+  cols.map(col => ({
+    ...col,
+    onHeaderCell: () => ({
+      style: { whiteSpace: 'nowrap' as const, textAlign: 'center' as const },
+    }),
+  }))
+
+/** 文字欄位搜尋 filterDropdown */
+const textFilterProps = (dataIndex: string) => ({
+  filterDropdown: ({ setSelectedKeys, selectedKeys, confirm, clearFilters }: any) => (
+    <div style={{ padding: 8 }}>
+      <Input
+        placeholder={`搜尋 ${dataIndex}`}
+        value={selectedKeys[0]}
+        onChange={e => setSelectedKeys(e.target.value ? [e.target.value] : [])}
+        onPressEnter={() => confirm()}
+        style={{ marginBottom: 8, display: 'block' }}
+        autoFocus
+      />
+      <Space>
+        <Button type="primary" onClick={() => confirm()} size="small" icon={<SearchOutlined />}>搜尋</Button>
+        <Button onClick={() => { clearFilters?.(); confirm() }} size="small">重置</Button>
+      </Space>
+    </div>
+  ),
+  filterIcon: (filtered: boolean) => <SearchOutlined style={{ color: filtered ? '#1677ff' : undefined }} />,
+  onFilter: (value: any, record: any) =>
+    String(record[dataIndex] ?? '').toLowerCase().includes(String(value).toLowerCase()),
+})
+
 const ExtractionsTab = ({ totalRows, onCleared }: { totalRows: number; onCleared: () => void }) => {
   const [rows, setRows] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [clearing, setClearing] = useState(false)
-  const [modelFilter, setModelFilter] = useState<string | undefined>(undefined)
-  const [search, setSearch] = useState('')
+  const [filteredCount, setFilteredCount] = useState<number | null>(null)
 
   useEffect(() => { loadRows() }, [])
 
   const loadRows = async () => {
     try {
       setLoading(true)
-      setRows(await getAllExtractions(2000))
+      const data = await getAllExtractions(2000)
+      setRows(data)
+      setFilteredCount(null)
     } catch {
       message.error('載入 Extractions 失敗')
     } finally {
@@ -484,6 +518,7 @@ const ExtractionsTab = ({ totalRows, onCleared }: { totalRows: number; onCleared
       await clearExtractions()
       message.success('Extractions 表已清空')
       setRows([])
+      setFilteredCount(null)
       onCleared()
     } catch {
       message.error('清空失敗')
@@ -492,29 +527,25 @@ const ExtractionsTab = ({ totalRows, onCleared }: { totalRows: number; onCleared
     }
   }
 
-  const modelOptions = [...new Set(rows.map(r => r.model_id).filter(Boolean))].map(m => ({
-    label: m, value: m,
-  }))
-
-  const filtered = rows.filter(r => {
-    if (modelFilter && r.model_id !== modelFilter) return false
-    if (search) {
-      const q = search.toLowerCase()
-      return (
-        (r.doc_id || '').toLowerCase().includes(q) ||
-        (r.NAME || '').toLowerCase().includes(q) ||
-        (r.file_name || '').toLowerCase().includes(q)
-      )
-    }
-    return true
-  })
+  // 枚舉選項（動態從資料產生）
+  const uniqueOptions = (field: string) =>
+    [...new Set(rows.map(r => r[field]).filter(v => v != null && v !== ''))].map(v => ({
+      text: String(v), value: v,
+    }))
 
   const columns: ColumnsType<any> = [
-    { title: 'run_id', dataIndex: 'run_id', key: 'run_id', width: 120, ellipsis: true,
+    {
+      title: 'run_id', dataIndex: 'run_id', key: 'run_id', width: 120, ellipsis: true,
+      ...textFilterProps('run_id'),
       render: (v: string) => (
         <Tooltip title={v}><Text type="secondary" style={{ fontSize: 10 }}>{v}</Text></Tooltip>
-      )},
-    { title: 'model_id', dataIndex: 'model_id', key: 'model_id', width: 200,
+      ),
+    },
+    {
+      title: 'model_id', dataIndex: 'model_id', key: 'model_id', width: 220,
+      filters: uniqueOptions('model_id'),
+      filterSearch: true,
+      onFilter: (value: any, record: any) => record.model_id === value,
       render: (m: string) => (
         <Tooltip title={m}>
           <Space size={4}>
@@ -522,53 +553,64 @@ const ExtractionsTab = ({ totalRows, onCleared }: { totalRows: number; onCleared
             <Text style={{ fontSize: 12 }}>{m}</Text>
           </Space>
         </Tooltip>
-      )},
-    { title: 'extracted_at', dataIndex: 'extracted_at', key: 'extracted_at', width: 150,
-      render: (t: string) => t ? dayjs(t).format('YYYY-MM-DD HH:mm') : '-' },
-    { title: 'doc_id', dataIndex: 'doc_id', key: 'doc_id', width: 160, ellipsis: true,
-      render: (v: string) => <Tooltip title={v}><Text style={{ fontSize: 12 }}>{v}</Text></Tooltip> },
-    { title: 'file_name', dataIndex: 'file_name', key: 'file_name', width: 180, ellipsis: true,
-      render: (v: string) => <Tooltip title={v}><Text style={{ fontSize: 12 }}>{v}</Text></Tooltip> },
-    { title: 'case_link', dataIndex: 'case_link', key: 'case_link', width: 80,
-      render: (v: string) => v ? <a href={v} target="_blank" rel="noreferrer">連結</a> : '-' },
-    { title: 'NAME',           dataIndex: 'NAME',          key: 'NAME', width: 130 },
-    { title: 'SEX',            dataIndex: 'SEX',           key: 'SEX',  width: 55 },
-    { title: 'DATE_OF_BIRTH',  dataIndex: 'DATE_OF_BIRTH', key: 'dob',  width: 120 },
-    { title: 'PLACE_OF_BIRTH', dataIndex: 'PLACE_OF_BIRTH',key: 'pob',  width: 160, ellipsis: true },
-    { title: 'raw_json', dataIndex: 'raw_json', key: 'raw_json', width: 80,
+      ),
+    },
+    {
+      title: 'extracted_at', dataIndex: 'extracted_at', key: 'extracted_at', width: 150,
+      ...textFilterProps('extracted_at'),
+      sorter: (a: any, b: any) => new Date(a.extracted_at).getTime() - new Date(b.extracted_at).getTime(),
+      render: (t: string) => t ? dayjs(t).format('YYYY-MM-DD HH:mm') : '-',
+    },
+    {
+      title: 'doc_id', dataIndex: 'doc_id', key: 'doc_id', width: 160, ellipsis: true,
+      ...textFilterProps('doc_id'),
+      render: (v: string) => <Tooltip title={v}><Text style={{ fontSize: 12 }}>{v}</Text></Tooltip>,
+    },
+    {
+      title: 'file_name', dataIndex: 'file_name', key: 'file_name', width: 180, ellipsis: true,
+      ...textFilterProps('file_name'),
+      render: (v: string) => <Tooltip title={v}><Text style={{ fontSize: 12 }}>{v}</Text></Tooltip>,
+    },
+    {
+      title: 'case_link', dataIndex: 'case_link', key: 'case_link', width: 80,
+      filters: [{ text: '有連結', value: 'has' }, { text: '無連結', value: 'none' }],
+      onFilter: (value: any, record: any) => value === 'has' ? !!record.case_link : !record.case_link,
+      render: (v: string) => v ? <a href={v} target="_blank" rel="noreferrer">連結</a> : '-',
+    },
+    {
+      title: 'NAME', dataIndex: 'NAME', key: 'NAME', width: 130,
+      ...textFilterProps('NAME'),
+    },
+    {
+      title: 'SEX', dataIndex: 'SEX', key: 'SEX', width: 70,
+      filters: uniqueOptions('SEX'),
+      onFilter: (value: any, record: any) => String(record.SEX) === String(value),
+    },
+    {
+      title: 'DATE_OF_BIRTH', dataIndex: 'DATE_OF_BIRTH', key: 'dob', width: 130,
+      ...textFilterProps('DATE_OF_BIRTH'),
+    },
+    {
+      title: 'PLACE_OF_BIRTH', dataIndex: 'PLACE_OF_BIRTH', key: 'pob', width: 160, ellipsis: true,
+      ...textFilterProps('PLACE_OF_BIRTH'),
+    },
+    {
+      title: 'raw_json', dataIndex: 'raw_json', key: 'raw_json', width: 80,
       render: (v: string) => v
         ? <Tooltip title={<pre style={{ maxWidth: 400, maxHeight: 300, overflow: 'auto', fontSize: 11 }}>{JSON.stringify(JSON.parse(v), null, 2)}</pre>}>
             <Text style={{ fontSize: 10, color: '#00873e', cursor: 'pointer' }}>查看</Text>
           </Tooltip>
-        : '-' },
+        : '-',
+    },
   ]
 
   return (
     <Space direction="vertical" style={{ width: '100%' }} size="middle">
-      <Row justify="space-between" align="middle" gutter={12}>
-        <Col>
-          <Space>
-            <Select
-              allowClear
-              placeholder="篩選 Model"
-              style={{ width: 240 }}
-              options={modelOptions}
-              value={modelFilter}
-              onChange={setModelFilter}
-            />
-            <Input.Search
-              placeholder="搜尋檔案名稱 / NAME"
-              style={{ width: 220 }}
-              allowClear
-              onSearch={setSearch}
-              onChange={e => !e.target.value && setSearch('')}
-            />
-          </Space>
-        </Col>
+      <Row justify="end" align="middle" gutter={12}>
         <Col>
           <Space>
             <Text type="secondary" style={{ fontSize: 12 }}>
-              顯示 {filtered.length} / {rows.length} 筆（BQ 共 {totalRows.toLocaleString()} 筆）
+              {filteredCount != null ? `篩選後 ${filteredCount} / ` : ''}{rows.length} 筆（BQ 共 {totalRows.toLocaleString()} 筆）
             </Text>
             <Button icon={<ReloadOutlined />} onClick={loadRows} loading={loading}>
               重新整理
@@ -590,12 +632,15 @@ const ExtractionsTab = ({ totalRows, onCleared }: { totalRows: number; onCleared
       </Row>
 
       <Table
-        columns={columns}
-        dataSource={filtered}
+        columns={wrapHeader(columns)}
+        dataSource={rows}
         rowKey={(r, i) => `${r.run_id}-${r.doc_id}-${i}`}
         loading={loading}
         size="small"
-        scroll={{ x: 1400 }}
+        scroll={{ x: 'max-content' }}
+        onChange={(_pagination, _filters, _sorter, extra) => {
+          setFilteredCount(extra.currentDataSource.length)
+        }}
         pagination={{
           pageSize: 10,
           showSizeChanger: true,
