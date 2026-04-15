@@ -1,6 +1,10 @@
 #!/bin/bash
 # 同時啟動前端和後端
 
+# 取得 script 所在目錄的絕對路徑，確保路徑正確不受 cd 影響
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PYTHON="$SCRIPT_DIR/.venv/bin/python"
+
 echo "🚀 啟動 LLM 萃取監控系統"
 echo "================================"
 echo ""
@@ -32,10 +36,10 @@ if command -v tmux &> /dev/null; then
     tmux split-window -h
     
     # 在左側啟動後端
-    tmux send-keys -t 0 'source .venv/bin/activate && cd api && python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload' C-m
+    tmux send-keys -t 0 "cd '$SCRIPT_DIR/api' && '$PYTHON' -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload" C-m
     
     # 在右側啟動前端
-    tmux send-keys -t 1 'cd frontend && npm run dev' C-m
+    tmux send-keys -t 1 "cd '$SCRIPT_DIR/frontend' && npm run dev" C-m
     
     # 附加到 session
     tmux attach-session -t llm-monitor
@@ -44,13 +48,12 @@ elif command -v screen &> /dev/null; then
     echo "使用 screen 同時啟動前後端..."
 
     # 後端用子 shell 背景啟動（避免 cd 影響當前目錄）
-    source .venv/bin/activate
-    ( cd api && python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload ) &
+    ( cd "$SCRIPT_DIR/api" && "$PYTHON" -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload ) &
     BACKEND_PID=$!
     echo "後端已啟動 (PID: $BACKEND_PID)"
 
     # 前端前景啟動
-    cd frontend && npm run dev
+    cd "$SCRIPT_DIR/frontend" && npm run dev
 
 else
     echo "⚠️  建議安裝 tmux 以便同時查看前後端日誌：brew install tmux"
@@ -59,11 +62,10 @@ else
     echo ""
 
     # 後端用子 shell 背景啟動（避免 cd 影響當前目錄）
-    source .venv/bin/activate
-    ( cd api && python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload ) &
+    ( cd "$SCRIPT_DIR/api" && "$PYTHON" -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload ) &
     BACKEND_PID=$!
     echo "後端已啟動 (PID: $BACKEND_PID)"
 
     # 前端前景啟動
-    cd frontend && npm run dev
+    cd "$SCRIPT_DIR/frontend" && npm run dev
 fi
