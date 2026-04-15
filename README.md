@@ -1,3 +1,6 @@
+![系統架構](docs/goal.png)
+
+
 # 法院判例 LLM 模型評估系統
 
 用於評估多個 LLM 模型（Gemini、Claude）在越南法院判決 PDF 結構化萃取任務上的準確度，並透過互動式 Dashboard 進行視覺化比較分析。
