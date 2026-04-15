@@ -761,6 +761,28 @@ async def analyze_accuracy_bq(request: BQAnalyzeRequest):
         name_accuracy_df = analyzer.calculate_name_accuracy(merged_df, list(model_dfs.keys()))
         full_accuracy_df = pd.concat([name_accuracy_df, accuracy_df], axis=0).reset_index(drop=True)
 
+        # 計算每個模型的「文件不一致篇數」
+        # 定義：只要某份 PDF 中有任一被告在 NAME/SEX/DATE_OF_BIRTH 任一欄位不吻合，即為不一致
+        doc_inconsistency = {}
+        exact_fields = ["NAME", "SEX", "DATE_OF_BIRTH"]
+        if "file_name" in merged_df.columns:
+            total_docs = int(merged_df["file_name"].nunique())
+            for norm_id in model_dfs.keys():
+                mismatch_mask = pd.Series([False] * len(merged_df), index=merged_df.index)
+                for field in exact_fields:
+                    gt_col = field
+                    model_col = f"{norm_id}_{field}"
+                    if gt_col in merged_df.columns and model_col in merged_df.columns:
+                        gt_vals = merged_df[gt_col].fillna("").astype(str).str.strip()
+                        model_vals = merged_df[model_col].fillna("").astype(str).str.strip()
+                        mismatch_mask = mismatch_mask | (gt_vals != model_vals)
+                mismatch_docs = int(merged_df.loc[mismatch_mask, "file_name"].nunique())
+                doc_inconsistency[norm_id] = {
+                    "mismatch_count": mismatch_docs,
+                    "total_count": total_docs,
+                    "doc_match_rate": round((total_docs - mismatch_docs) / total_docs, 4) if total_docs > 0 else 0,
+                }
+
         return {
             "success": True,
             "model_names": list(model_dfs.keys()),
@@ -769,6 +791,7 @@ async def analyze_accuracy_bq(request: BQAnalyzeRequest):
             "accuracy_summary": full_accuracy_df.to_dict(orient="records"),
             "field_list": ["NAME", "SEX", "DATE_OF_BIRTH", "DATE_OF_BIRTH_YEAR", "PLACE_OF_BIRTH"],
             "total_records": len(merged_df),
+            "doc_inconsistency": doc_inconsistency,
         }
 
     except HTTPException:

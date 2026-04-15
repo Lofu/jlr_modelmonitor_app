@@ -26,6 +26,7 @@ import {
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as ReTooltip,
   Legend, ResponsiveContainer, Cell, LabelList, ReferenceLine,
+  RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
 } from 'recharts'
 import { listBQRuns, analyzeAccuracyBQ, getCaseCounts, type BQRun } from '../services/api'
 import dayjs from 'dayjs'
@@ -706,6 +707,66 @@ const AnalyzePage = () => {
               </Card>
             )
           })()}
+
+        {/* 雷達圖：三維綜合評估 */}
+        {result && (() => {
+          const radarData = [
+            { dimension: '被告人數佔比' },
+            { dimension: '平均一致率' },
+            { dimension: '文件準確率' },
+          ]
+
+          const total = result.total_records
+
+          result.model_names.forEach((norm: string) => {
+            // 被告人數佔比
+            const extractCount = result.model_extraction_counts?.[norm] ?? 0
+            radarData[0][norm] = total > 0 ? parseFloat(((extractCount / total) * 100).toFixed(1)) : 0
+
+            // 平均一致率：各欄位完全一致率的平均
+            const exactFields = ['NAME', 'SEX', 'DATE_OF_BIRTH', 'DATE_OF_BIRTH_YEAR']
+            const rates = result.accuracy_summary
+              .filter((r: any) => r['模型'] === norm && exactFields.includes(r['欄位']))
+              .map((r: any) => r['完全一致率'] ?? 0)
+            radarData[1][norm] = rates.length > 0
+              ? parseFloat((rates.reduce((a: number, b: number) => a + b, 0) / rates.length * 100).toFixed(1))
+              : 0
+
+            // 文件準確率：1 - 不一致篇數 / 總篇數
+            const docInfo = result.doc_inconsistency?.[norm]
+            radarData[2][norm] = docInfo != null
+              ? parseFloat((docInfo.doc_match_rate * 100).toFixed(1))
+              : 0
+          })
+
+          return (
+            <Card title="模型綜合評估雷達圖" style={{ marginTop: 0 }}>
+              <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 12 }}>
+                三個維度均以百分比表示，數值越高越好。「文件準確率」= 所有欄位皆吻合的 PDF 佔比。
+              </Text>
+              <ResponsiveContainer width="100%" height={420}>
+                <RadarChart data={radarData} margin={{ top: 20, right: 60, bottom: 20, left: 60 }}>
+                  <PolarGrid />
+                  <PolarAngleAxis dataKey="dimension" tick={{ fontSize: 14, fontWeight: 600 }} />
+                  <PolarRadiusAxis angle={90} domain={[0, 100]} tick={{ fontSize: 11 }} tickFormatter={(v) => `${v}%`} />
+                  {result.model_names.map((norm: string, i: number) => (
+                    <Radar
+                      key={norm}
+                      name={formatModelId(result.model_display_names[norm] || norm)}
+                      dataKey={norm}
+                      stroke={modelColorMap[norm] ?? colors[i % colors.length]}
+                      fill={modelColorMap[norm] ?? colors[i % colors.length]}
+                      fillOpacity={0.15}
+                      strokeWidth={2}
+                    />
+                  ))}
+                  <Legend wrapperStyle={{ fontSize: 13 }} />
+                  <ReTooltip formatter={(v: any) => `${v}%`} />
+                </RadarChart>
+              </ResponsiveContainer>
+            </Card>
+          )
+        })()}
 
         </Space>
       )}
