@@ -31,8 +31,6 @@ ModelChange_Monitor_react/
 │   └── outputs/                 # 萃取原始 JSONL 輸出
 ├── samplepdflist/               # 越南法院判例 PDF（98 篇）
 ├── start-all.sh                 # 使用 tmux 同時啟動前後端
-├── start-backend.sh             # 單獨啟動後端
-├── start-frontend.sh            # 單獨啟動前端
 ├── requirements.txt             # Python 依賴（Streamlit 舊版用，保留）
 └── requirements-api.txt         # FastAPI 後端依賴
 ```
@@ -123,19 +121,11 @@ gcloud auth application-default login
 
 ### 3. 啟動應用
 
-**方式一：使用 tmux 同時啟動（推薦）**
 ```bash
 ./start-all.sh
 ```
 
-**方式二：分視窗啟動**
-```bash
-# 終端 1
-./start-backend.sh
-
-# 終端 2
-./start-frontend.sh
-```
+> 使用 tmux 同時啟動前後端。若未安裝 tmux：`brew install tmux`
 
 ### 4. 訪問
 
